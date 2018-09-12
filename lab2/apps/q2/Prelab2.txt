@@ -4,13 +4,34 @@
 ## LAST MODIFIED: 	Tuesday, September 11, 2018
 ###############################################################################
 
-## Q1. How many semaphores and locks are available in DLXOS, respectively?
+## Q1. 	How many semaphores and locks are available in DLXOS, respectively?
+## A1. 	According to synch.h, DLXOS has 32 semaphores and 64 locks
 
-## Q2. What are the system calls to create, acquire and release a lock?
 
-## Q3. How is a semaphore created in DLXOS?
+## Q2. 	What are the system calls to create, acquire and release a lock?
+## A2.
+
+
+## Q3. 	How is a semaphore created in DLXOS?
+## A3. 	In synch.c, SemCreate() disables the interrupts in order to make the 
+##     
+##		operation atomic. SemCreate() then initializes the semaphore by calling 
+##     	SemInit(). SemInit() initializes a queue for the semaphore, which 
+##	   	consists of setting the following values:
+##     		q->first = NULL; q->last = NULL; q->nitems = 0
+##     
+##	   	If a semaphore is not currently in use, then the value is changed so 
+##     	that the semaphore becomes used. SemInit() then returns. SemCreate() 
+##	   	restores interrupts, and returns the handle to the semaphore (for
+##     	future accesses to the semaphore) if all operations were successful.
+##
+##     	Although there are other functions dealing with semaphores (SemWait, 
+##	   	SemHandleWait, semSignal, etc.), the above conludes the process for how 
+##     	a semaphore is created in DLXOS.
+
 
 ## Q4. Explain how lock_acquire, lock_release, sem_signal and sem_wait work.
+
 
 ## Q5. What is a handle and how is it used to access semaphores in DLXOS?
 
