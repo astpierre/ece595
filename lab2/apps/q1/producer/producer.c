@@ -16,9 +16,13 @@ void main (int argc, char *argv[])
 	int next;						// Circular buffer accessory
 
 	// Check CLA's
-  	if (argc != 4) { 
-    	Printf("Usage: "); Printf(argv[0]); Printf(" <handle_to_shared_memory_page> <handle_to_page_mapped_lock> <handle_to_page_mapped_semaphore>\n"); Exit();
-  	} 
+  	if (argc != 4) 
+    { 
+        Printf("Usage: "); 
+        Printf(argv[0]); 
+        Printf(" <handle_to_shared_memory_page> <handle_to_page_mapped_lock> <handle_to_page_mapped_semaphore>\n");
+        Exit();
+  	}
 
   	// Convert the command-line strings into integers for use as handles
   	h_mem = dstrtol(argv[1], NULL, 10);
@@ -38,13 +42,13 @@ void main (int argc, char *argv[])
 		if(lock_acquire(lock))
 		{
 			// If !FULL
-			if(cbuf->head != ((cbuf->tail+1)%(cbuf->maxbuf)))
+			if(cbuf->head != (cbuf->tail+1)%BUFFERSIZE)
 			{
 				// ADD CHAR TO BUFFER
 				cbuf->buffer[cbuf->tail] = hello[i];
 				Printf("Producer %d inserted: %c\n",Getpid(), cbuf->buffer[cbuf->tail]);
 				// UPDATE TAIL
-				cbuf->tail = (cbuf->tail+1)%cbuf->maxbuf;
+				cbuf->tail = (cbuf->tail+1)%BUFFERSIZE;
 				i++;
 			}
 			// Release the lock
@@ -56,12 +60,12 @@ void main (int argc, char *argv[])
 	}
 
   	// Signal the semaphore to tell the original process that we're done
-  	Printf("producer: PID %d is complete. Killing it.\n", Getpid());
-  	if(sem_signal(sem_proc) != SYNC_SUCCESS) 
+  	Printf("Producer: PID %d is complete. Killing it. Moving on to consumer...\n", Getpid());
+  	/*if(sem_signal(sem_proc) != SYNC_SUCCESS) 
 	{
 		Printf("Bad semaphore s_procs_completed (%d) in ", sem_proc); 
 		Printf(argv[0]); 
 		Printf(", exiting...\n");
 	    Exit();
-  	}
+  	}*/
 }

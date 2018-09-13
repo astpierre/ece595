@@ -13,11 +13,14 @@ void main (int argc, char *argv[])
 	sem_t sem_proc;					// Semaphore to signal the original proc
 	int i=0;						// Incrementer
 	int next;						// Circular buffer accessory
-	//char tmpc;						// Store char removed
 
 	// Check CLA's
-  	if (argc != 4) { 
-    	Printf("Usage: "); Printf(argv[0]); Printf(" <handle_to_shared_memory_page> <handle_to_page_mapped_lock> <handle_to_page_mapped_semaphore>\n"); Exit();
+  	if (argc != 4) 
+    { 
+        Printf("Usage: "); 
+        Printf(argv[0]); 
+        Printf(" <handle_to_shared_memory_page> <handle_to_page_mapped_lock> <handle_to_page_mapped_semaphore>\n"); 
+        Exit();
   	}
 
   	// Convert the command-line strings into integers for use as handles
@@ -41,9 +44,9 @@ void main (int argc, char *argv[])
 			if(cbuf->tail != cbuf->head)
 			{
 				// REMOVE CHAR FROM BUFFER
-				Printf("Consumer %d removed: %x\n",Getpid(),cbuf->buffer[cbuf->head]);
+				Printf("Consumer %d removed: %c\n",Getpid(),cbuf->buffer[cbuf->head]);
 				// UPDATE HEAD
-				cbuf->head = (cbuf->head+1)%cbuf->maxbuf;
+				cbuf->head = (cbuf->head+1)%BUFFERSIZE;
 				i++;
 			}
 			// Release the lock

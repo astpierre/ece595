@@ -9,12 +9,12 @@ void main (int argc, char *argv[])
 	// Variable declarations
 	int numprocs = 0;               // Used to store number of processes to create
   	int i;                          // Loop index variable
-  	circular_buffer * cbuf;              // Used to get address of shared memory page
+  	circular_buffer * cbuf;         // Used to get address of shared memory page
   	uint32 h_mem;                   // Used to hold handle to shared memory page
  	sem_t s_procs_completed;        // Semaphore used wait until procs complete
-  	char h_mem_str[10];             // Used as CLA to pass mem_handle to procs
-  	char s_procs_completed_str[10]; // Used as CLA to pass page_mapped hndl to procs
 	lock_t l_proc;					// Lock used to indicated critcal sections
+    char h_mem_str[10];             // Used as CLA to pass mem_handle to procs
+  	char s_procs_completed_str[10]; // Used as CLA to pass page_mapped hndl to procs	
 	char l_proc_str[10];			// Used as CLA to pass lock handle to procs
 
 	// Check CLA's
@@ -49,11 +49,10 @@ void main (int argc, char *argv[])
   	cbuf->numprocs = numprocs;
 	cbuf->head = 0;
 	cbuf->tail = 0;
-	cbuf->maxbuf = 11;
 
   	// Create semaphore to not exit this process until all other processes
   	// have signalled that they are complete. Initialize to (-1)*(numprocs)  
-	if ((s_procs_completed = sem_create(-((numprocs*2)-1))) == SYNC_FAIL) 
+	if (s_procs_completed = sem_create(-(numprocs-1)) == SYNC_FAIL) 
 	{
  	   	Printf("Bad sem_create in "); 
 		Printf(argv[0]); 
@@ -64,7 +63,7 @@ void main (int argc, char *argv[])
 	// Create a lock, check fail
 	if((l_proc = lock_create()) == SYNC_FAIL)
 	{
-		Printf("PROCESS COULD NOT INITIALIZE LOCK\n");
+		Printf("ERROR: PROCESS COULD NOT INITIALIZE LOCK\n");
 		Exit();
 	}
 
