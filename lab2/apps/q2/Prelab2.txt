@@ -3,38 +3,72 @@
 ## WRITTEN BY: 		Andrew St. Pierre & Eli Kern
 ## LAST MODIFIED: 	Tuesday, September 11, 2018
 ###############################################################################
+-------------------------------------------------------------------------------
+###############################################################################
+## Q1. How many semaphores and locks are available in DLXOS, respectively? ###
+## A1. ########################################################################
+According to synch.h, DLXOS has 32 semaphores and 64 locks
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+###############################################################################
+## Q2. What are the system calls to create, acquire and release a lock? ######
+## A2. ########################################################################
+The system calls to create, acquire, and release a lock are as follows:
 
-## Q1. 	How many semaphores and locks are available in DLXOS, respectively?
-## A1. 	According to synch.h, DLXOS has 32 semaphores and 64 locks
+ANDREW, PLEASE REVIEW THIS -- WORDING CONFUSES ME. It wants to know about
+SYSTEM CALLS to create, acquire, and release a lock?????
+I'd wager money that the following answer isn't what professor wants.
 
+In LockCreate(), DisableIntrs() and RestoreIntrs() are called.
+In LockAcquire(), DisableIntrs(), RestoreIntrs(), and GetCurrentPid() are called.
+In LockRelease(), DisableIntrs(), RestoreIntrs, GetCurrentPid(), and ProcessWakeup().
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+###############################################################################
+## Q3. How is a semaphore created in DLXOS? ##################################
+## A3. ########################################################################
+In synch.c, SemCreate() disables the interrupts in order to make the operation atomic.
+SemCreate() then initializes the semaphore by calling SemInit(). SemInit() initializes 
+a queue for the semaphore, which consists of setting the following values:
+	q->first = NULL; q->last = NULL; q->nitems = 0
+If a semaphore is not currently in use, then the value is changed so that the semaphore becomes used.
+SemInit() then returns. SemCreate() restores interrupts, and returns the handle to the semaphore
+(for future accesses to the semaphore) if all operations were successful.
+Although there are other functions dealing with semaphores (SemWait, SemHandleWait, semSignal, etc.),
+the above conludes the process for how a semaphore is created in DLXOS.
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+###############################################################################
+## Q4. Explain how lock_acquire, lock_release, sem_signal and sem_wait work. #
+## A4. ########################################################################
+lock_acquire traps to 0x454, lock_release traps to 0x455, sem_signal traps to 0x452, and sem_wait traps to 0x451.
+These trap routines are handled by usertraps.s and traps.c.
+The handle for the item being trapped is saved into the current PCB.
+The handle will be explained more in Q5.
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+###############################################################################
+## Q5. What is a handle and how is it used to access semaphores in DLXOS? ####
+## A5. ########################################################################
+The handle is a status showing whether or not a process was able to successfully obtain a semaphore.
+We can see in os/traps.c that there are functions that set things such as "handle = SemHandleWait(ihandle);".
+For the specific purposes of accessing semaphores, the first thing that is done is that the program ensures it is in system mode (as opposed to user mode).
+ihandle is the argument list / the trap argument.
+As can be seen in the file os/synch.c, in the case of SemHandleWait(ihandle), the program checks three conditions and returns a failure if any of the three conditions are true:
+  1. if the variable sem < 0
+  2. if the variable sem >= the variable MAX_SEMS
+  3. if sem[sem] is already being used
+If none of these three conditions is true, then the program returns SYNC_SUCCESS (defined to be 1).
+Otherwise, if any of the three conditions is true, the program returns SYNC_FAIL (defined to be 0).
 
-## Q2. 	What are the system calls to create, acquire and release a lock?
-## A2.
+For SemWait, the program disables interrupts, checks to see if the semaphore counter is <= 0, and puts the process to sleep if it is.
+Assuming the semaphore counter is not <= 0, the semaphore counter is decremented, and interrupts are restored.
 
+For SemSignal, the program disables interrupts and increments the semaphore counter.
+After SemSignal increments the semaphore counter, if the semaphore counter is greater than 0, the program checks to see if a program needs to be woken up.
+If a program does need indeed need to be woken up, the semaphore counter is decremented (in addition to the program being woken up).
+The interrupts are then enables again.
 
-## Q3. 	How is a semaphore created in DLXOS?
-## A3. 	In synch.c, SemCreate() disables the interrupts in order to make the 
-##     
-##		operation atomic. SemCreate() then initializes the semaphore by calling 
-##     	SemInit(). SemInit() initializes a queue for the semaphore, which 
-##	   	consists of setting the following values:
-##     		q->first = NULL; q->last = NULL; q->nitems = 0
-##     
-##	   	If a semaphore is not currently in use, then the value is changed so 
-##     	that the semaphore becomes used. SemInit() then returns. SemCreate() 
-##	   	restores interrupts, and returns the handle to the semaphore (for
-##     	future accesses to the semaphore) if all operations were successful.
-##
-##     	Although there are other functions dealing with semaphores (SemWait, 
-##	   	SemHandleWait, semSignal, etc.), the above conludes the process for how 
-##     	a semaphore is created in DLXOS.
-
-
-## Q4. Explain how lock_acquire, lock_release, sem_signal and sem_wait work.
-
-
-## Q5. What is a handle and how is it used to access semaphores in DLXOS?
-
-
-
-##### END "Prelab2.txt"
+The status (either SYNC_SUCCESS or SYNC_FAIL) is saved into the currentSavedFrame of the PCB.
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
