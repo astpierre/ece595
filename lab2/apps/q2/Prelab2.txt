@@ -1,7 +1,7 @@
 ###############################################################################
 ## FILENAME: 		"Prelab2.txt"
 ## WRITTEN BY: 		Andrew St. Pierre & Eli Kern
-## LAST MODIFIED: 	Tuesday, September 11, 2018
+## LAST MODIFIED: 	Tuesday, September 18, 2018
 ###############################################################################
 -------------------------------------------------------------------------------
 ###############################################################################
@@ -28,7 +28,7 @@ In LockRelease(), DisableIntrs(), RestoreIntrs, GetCurrentPid(), and ProcessWake
 ## Q3. How is a semaphore created in DLXOS? ##################################
 ## A3. ########################################################################
 In synch.c, SemCreate() disables the interrupts in order to make the operation atomic.
-SemCreate() then initializes the semaphore by calling SemInit(). SemInit() initializes 
+SemCreate() then initializes the semaphore by calling SemInit(). SemInit() initializes
 a queue for the semaphore, which consists of setting the following values:
 	q->first = NULL; q->last = NULL; q->nitems = 0
 If a semaphore is not currently in use, then the value is changed so that the semaphore becomes used.
