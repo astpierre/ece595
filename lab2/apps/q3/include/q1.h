@@ -3,10 +3,9 @@
 
 typedef struct circular_buffer {
 	int numprocs;
-	char * buffer;
+	char buffer[BUFFERSIZE];
 	int head;
 	int tail;
-	int maxbuf;
 } circular_buffer;
 
 #define PRODUCER_RUN "producer.dlx.obj"
