@@ -11,8 +11,9 @@
 #include "synch.h"
 #include "queue.h"
 
-static Sem sems[MAX_SEMS]; 	// All semaphores in the system
-static Lock locks[MAX_LOCKS];   // All locks in the system
+static Sem sems[MAX_SEMS]; 	        // All semaphores in the system
+static Lock locks[MAX_LOCKS];       // All locks in the system
+static Cond conds[MAX_CONDS];       // All cond vars in the system
 
 extern struct PCB *currentPCB; 
 //----------------------------------------------------------------------
@@ -21,19 +22,19 @@ extern struct PCB *currentPCB;
 //	Initializes the synchronization primitives: the semaphores
 //----------------------------------------------------------------------
 int SynchModuleInit() {
-  int i; // Loop Index variable
-  dbprintf ('p', "SynchModuleInit: Entering SynchModuleInit\n");
-  for(i=0; i<MAX_SEMS; i++) {
-    sems[i].inuse = 0;
-  }
-  for(i=0; i<MAX_LOCKS; i++) {
-    // Your stuff for initializing locks goes here
-  }
-  for(i=0; i<MAX_CONDS; i++) {
-    // Your stuff for initializing Condition variables goes here
-  }
-  dbprintf ('p', "SynchModuleInit: Leaving SynchModuleInit\n");
-  return SYNC_SUCCESS;
+    int i; // Loop Index variable
+    dbprintf ('p', "SynchModuleInit: Entering SynchModuleInit\n");
+    for(i=0; i<MAX_SEMS; i++) {
+        sems[i].inuse = 0;
+    }
+    for(i=0; i<MAX_LOCKS; i++) {
+        // Your stuff for initializing locks goes here
+    }
+    for(i=0; i<MAX_CONDS; i++) {
+        conds[i].inuse = 0;
+    }
+    dbprintf ('p', "SynchModuleInit: Leaving SynchModuleInit\n");
+    return SYNC_SUCCESS;
 }
 
 //---------------------------------------------------------------------
@@ -45,13 +46,13 @@ int SynchModuleInit() {
 //
 //----------------------------------------------------------------------
 int SemInit (Sem *sem, int count) {
-  if (!sem) return SYNC_FAIL;
-  if (AQueueInit (&sem->waiting) != QUEUE_SUCCESS) {
-    printf("FATAL ERROR: could not initialize semaphore waiting queue in SemInit!\n");
-    exitsim();
-  }
-  sem->count = count;
-  return SYNC_SUCCESS;
+    if (!sem) return SYNC_FAIL;
+    if (AQueueInit (&sem->waiting) != QUEUE_SUCCESS) {
+        printf("FATAL ERROR: could not initialize semaphore waiting queue in SemInit!\n");
+        exitsim();
+    }
+    sem->count = count;
+    return SYNC_SUCCESS;
 }
 
 //----------------------------------------------------------------------
@@ -62,22 +63,22 @@ int SemInit (Sem *sem, int count) {
 //	through this handle.  Returns SYNC_FAIL on failure.
 //----------------------------------------------------------------------
 sem_t SemCreate(int count) {
-  sem_t sem;
-  uint32 intrval;
-
-  // grabbing a semaphore should be an atomic operation
-  intrval = DisableIntrs();
-  for(sem=0; sem<MAX_SEMS; sem++) {
-    if(sems[sem].inuse==0) {
-      sems[sem].inuse = 1;
-      break;
+    sem_t sem;
+    uint32 intrval;
+    
+    // grabbing a semaphore should be an atomic operation
+    intrval = DisableIntrs();
+    for(sem=0; sem<MAX_SEMS; sem++) {
+        if(sems[sem].inuse==0) {
+            sems[sem].inuse = 1;
+            break;
+        }
     }
-  }
-  RestoreIntrs(intrval);
-  if(sem==MAX_SEMS) return SYNC_FAIL;
-
-  if (SemInit(&sems[sem], count) != SYNC_SUCCESS) return SYNC_FAIL;
-  return sem;
+    RestoreIntrs(intrval);
+    if(sem==MAX_SEMS) return SYNC_FAIL;
+    
+    if (SemInit(&sems[sem], count) != SYNC_SUCCESS) return SYNC_FAIL;
+    return sem;
 }
 
 
@@ -326,9 +327,38 @@ int LockHandleRelease(lock_t lock) {
 //	this function should return INVALID_COND (see synch.h). Otherwise it
 //	should return handle of the condition variable.
 //--------------------------------------------------------------------------
-cond_t CondCreate(lock_t lock) {
-  // Your code goes here
-  return SYNC_FAIL;
+cond_t CondCreate(lock_t lock) 
+{
+    cond_t cv;
+    uint32 intrval;
+
+    // Atomically grab a condition variable
+    intrval = DisableIntrs();
+    for(cv=0; cv<MAX_CONDS; cv++) {
+        // grab first unused condition variable from pool
+        if(conds[cv].inuse==0) {
+            conds[cv].inuse = 1;
+            break;
+        }
+    }
+    RestoreIntrs(intrval);
+    // Check to make sure we found one
+    if(cv==MAX_CONDS) return INVALID_COND;
+
+    // Check that lock is valid and if so, save the handle in structure
+    if(lock < 0) return INVALID_COND;
+    if(lock >= MAX_LOCKS) return INVALID_COND;
+    if(!locks[lock].inuse) return INVALID_COND;
+    cv->lock = lock;
+    
+    // Initialize a queue for waiting processes
+    if(AQueueInit(&cv->waiting) != QUEUE_SUCCESS) {
+        printf("FATAL ERROR: could not initialize condition variable waiting queue in CondCreate\n");
+        exitsim();
+    }
+
+    // Return the handle to the condition variable
+    return cv;
 }
 
 //---------------------------------------------------------------------------
@@ -355,8 +385,39 @@ cond_t CondCreate(lock_t lock) {
 //	CondHandleBroadcast releases the lock explicitly.
 //---------------------------------------------------------------------------
 int CondHandleWait(cond_t c) {
-  // Your code goes here
-  return SYNC_SUCCESS;
+    Link *l;
+    int intrval;
+    
+    // Check condition variable handle is valid
+    if(c < 0) return SYNC_FAIL;
+    if(c >= MAX_CONDS) return SYNC_FAIL;
+    if(!conds[c].inuse) return SYNC_FAIL;
+
+    // Disable interrupts (BECOME ATOMIC)
+    intrval = DisableIntrs();
+    
+    // Check the calling process actually has the lock
+    if(locks[conds[c].lock].pid != GetCurrentPid()) {  RestoreIntrs(intrval); return SYNC_FAIL;  }
+
+    // Release the lock
+    if(LockHandleRelease(conds[c].lock) != SYNC_SUCCESS) return 0;
+
+    // Grab a link for the process
+    if((l=AQueueAllocLink ((void *)currentPCB)) == NULL) 
+    {  printf("FATAL ERROR: could not alocate link for cvar queue in CondHandleWait.\n"); exitsim(); }
+
+    // Insert link in queue
+    if(AQueueInsertLast(conds[c].waiting, l) != QUEUE_SUCCESS)
+    {  printf("FATAL ERROR: could not insert new link in cvar queue in CondHandleWait.\n"); exitsim(); }
+
+    // Place process to sleep
+    ProcessSleep();
+    
+    // Restore interrupts (!BECOME ATOMIC)
+    intrval = DisableIntrs();
+
+    // Condition variable handled wait call successfully!
+    return SYNC_SUCCESS;
 }
 
 
