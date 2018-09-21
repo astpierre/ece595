@@ -10,23 +10,26 @@ void main (int argc, char *argv[])
   	circular_buffer * cbuf;  		// Circular buffer handle
   	uint32 h_mem;      				// Handle to the shared memory page
   	lock_t lock; 					// Lock for critical code
-	sem_t sem_proc;					// Semaphore to signal the original process
-    sem_t s_emptyslots;             // Semaphore to indicate # empty slots in buffer
-    sem_t s_fullslots;              // Semaphore to indicate # full slots in buffer
+  	lock_t l_buff;       			// Lock for buffer condvars 
+  	cond_t not_full; 			    // Condition variable not_full
+  	cond_t not_empty; 			    // Condition variable not_empty
+	sem_t sem_proc;					// Semaphore to signal the original proc
 	int i=0;						// While condition for # iters
+    int now_something=0;            // Check if buffer will b full after producing
 	char hello[11] = "Hello World";	// Value placed in buffer
     char usage[] = "<h_shared_memory_pg> <h_lock> <h_proc_semaphore> <h_s_emptyslots> <h_s_fullslots>\n";
 
 	// Check CLA's
-  	if (argc != 6) 
+  	if (argc != 7) 
     {  Printf("Usage: "); Printf(argv[0]); Printf(usage); Exit();  }
 
   	// Convert the command-line strings into integers for use as handles
   	h_mem = dstrtol(argv[1], NULL, 10);
   	lock = dstrtol(argv[2], NULL, 10);
 	sem_proc = dstrtol(argv[3], NULL, 10);
-    s_emptyslots = dstrtol(argv[4], NULL, 10);
-    s_fullslots = dstrtol(argv[5],NULL,10);
+	l_buff = dstrtol(argv[4], NULL, 10);
+	not_empty = dstrtol(argv[5], NULL, 10);
+	not_full = dstrtol(argv[6], NULL, 10); 
 
  	// Map shared memory page into this process's memory space
   	if ((cbuf = (circular_buffer *)shmat(h_mem)) == NULL) 
@@ -35,15 +38,20 @@ void main (int argc, char *argv[])
 	// Access shared memory and place characters one by one
 	while(i < 11)
 	{
-        // Wait for space to produce new character
-        if(sem_wait(s_emptyslots) != SYNC_SUCCESS)
-        {  Printf("Bad semaphore"); Printf(" exitting...\n"); Exit();  }
-	
-        // We have some space... go get the lock
-		if(lock_acquire(lock) != SYNC_SUCCESS)
-		{  Printf("ERROR AQUIRING LOCK \n"); Printf("exitting...\n"); Exit();  }
+        // Grab lock associated with buffer condvars
+	    while(lock_acquire(l_buff) != SYNC_SUCCESS);
 
-		// ADD CHAR TO BUFFER
+        // If full, wait 'till not_empty gets signaled
+        while(cbuf->head == (cbuf->tail+1)%BUFFERSIZE)
+        {
+            // Get in queue to be signalled when buffer is empty
+            cond_wait(not_full);
+        }
+
+        // Check if the buffer was previously empty b4 producing this next item...
+        if(cbuf->head == (cbuf->tail+1)%BUFFERSIZE) now_something = 1;
+		
+        // ADD CHAR TO BUFFER
 		cbuf->buffer[cbuf->tail] = hello[i];
 		Printf("Producer %d inserted: %c\n",Getpid(), cbuf->buffer[cbuf->tail]);
 		
@@ -52,15 +60,19 @@ void main (int argc, char *argv[])
         
         // UPDATE INCREMENTER
 		i++;
-		
-		// Release the lock
-		if (lock_release(lock) != SYNC_SUCCESS)
-		{  Printf("ERROR RELEASING LOCK %d", Getpid()); Printf(" exitting...\n"); Exit();  }
 
-        // Signal that we have one more full slot in the buffer now...
-        if(sem_signal(s_fullslots) != SYNC_SUCCESS)
-        {  Printf("Bad sem s_fullslots (%d) in ",s_fullslots); Printf(argv[0]); Printf(", exiting...\n"); Exit();  }
+        // If buffer now has something, signal it!
+        if(now_something == 1) 
+        { 
+            if(cond_signal(not_empty) != SYNC_SUCCESS) 
+            {  Printf("Bad cond v. empty_buff (%d) in ",not_empty); Printf(argv[0]); Printf(", exiting...\n"); Exit();  }
+            // NOT FOR LONG...
+            now_something == 0;
+        }
+        else cond_signal(not_empty); 
+
+        // Release the lock after all work is done (mesa style)
+    	if(lock_release(l_buff) != SYNC_SUCCESS) {  Printf("ERROR, BAD LOCK RELEASE\n"); Exit();  }
 	}
- 
-  	Printf("Producer: PID %d is complete. Killing it. Moving on to consumer...\n", Getpid());
+  	Printf("Producer: PID %d is complete. Killing it. Moving on to consumer...\n", Getpid()); 
 }

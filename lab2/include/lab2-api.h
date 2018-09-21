@@ -21,16 +21,16 @@ typedef int lock_t;
 typedef int cond_t;
 
 //Related to processes
-void process_create(char *arg1, ...);  	//trap 0x432
+void process_create(char *arg1, ...);   //trap 0x432
 
 //Related to shared memory
-uint32 shmget();			//trap 0x440
-void *shmat(uint32 handle);		//trap 0x441
+uint32 shmget();			        //trap 0x440
+void *shmat(uint32 handle);		    //trap 0x441
 
 //Related to semaphores
-sem_t sem_create(int count);		//trap 0x450
-int sem_wait(sem_t sem);		//trap 0x451
-int sem_signal(sem_t sem);		//trap 0x452
+sem_t sem_create(int count);	    //trap 0x450
+int sem_wait(sem_t sem);		    //trap 0x451
+int sem_signal(sem_t sem);		    //trap 0x452
 
 //-----------------------------------------------------------------------
 // You need to write OS handler routines for the following functions
@@ -40,12 +40,12 @@ int sem_signal(sem_t sem);		//trap 0x452
 // description of thses routines, see synch.c.
 //------------------------------------------------------------------------
 
-lock_t lock_create();			//trap 0x452 Calls LockCreate()
+lock_t lock_create();			    //trap 0x452 Calls LockCreate()
 int lock_acquire(lock_t lock);		//trap 0x453 Calls LockHandleAcquire()
 int lock_release(lock_t lock);		//trap 0x454 Calls LockHandleRelease()
 
 cond_t cond_create(lock_t lock);	//trap 0x455 Calls CondCreate()
-int cond_wait(cond_t cond);		//trap 0x456 Calls CondHandleWait()
+int cond_wait(cond_t cond);		    //trap 0x456 Calls CondHandleWait()
 int cond_signal(cond_t cond);		//trap 0x457 Calls CondHandleSignal()
 int cond_broadcast(cond_t cond);	//trap 0x458 Calls CondHandleBroadcast()
 

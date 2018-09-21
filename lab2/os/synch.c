@@ -28,10 +28,12 @@ int SynchModuleInit() {
         sems[i].inuse = 0;
     }
     for(i=0; i<MAX_LOCKS; i++) {
-        // Your stuff for initializing locks goes here
+        locks[i].inuse = 0;
+        locks[i].pid = -1;
     }
     for(i=0; i<MAX_CONDS; i++) {
         conds[i].inuse = 0;
+        conds[i].lock = -1;
     }
     dbprintf ('p', "SynchModuleInit: Leaving SynchModuleInit\n");
     return SYNC_SUCCESS;
@@ -345,12 +347,18 @@ cond_t CondCreate(lock_t lock)
 {
     cond_t cond;
     uint32 intrval;
+    
+    // Check that the lock we were given is valid
+    if(lock < 0) return INVALID_COND;
+    if(lock >= MAX_LOCKS) return INVALID_COND;
+    if(!locks[lock].inuse) return INVALID_COND;
 
     // Atomically grab a condition variable
     intrval = DisableIntrs();
     for(cond=0; cond<MAX_CONDS; cond++) {
         // grab first unused condition variable from pool
         if(conds[cond].inuse==0) {
+            conds[cond].lock = lock;
             conds[cond].inuse = 1;
             break;
         }
@@ -361,16 +369,8 @@ cond_t CondCreate(lock_t lock)
     // Check to make sure we found one
     if(cond==MAX_CONDS) return INVALID_COND;
 
-    // Check that the lock we were given is valid
-    if(lock < 0) return INVALID_COND;
-    if(lock >= MAX_LOCKS) return INVALID_COND;
-    if(!locks[lock].inuse) return INVALID_COND;
-
     // Initialize!
-    if(CondInit(&conds[cond]) != SYNC_SUCCESS) return SYNC_FAIL;
-
-    // Save the lock handle in the structure
-    conds[cond].lock = lock;
+    if(CondInit(&conds[cond]) != SYNC_SUCCESS) return SYNC_FAIL; 
    
     // Return the handle to the condition variable
     return cond;
@@ -410,9 +410,6 @@ int CondWait(Cond *cond) {
     // Check the calling process actually has the lock
     if(locks[cond->lock].pid != GetCurrentPid()) {  RestoreIntrs(intrval); return SYNC_FAIL;  }
 
-    // Release the lock to not be "busy waiting"
-    if(LockHandleRelease(cond->lock) != SYNC_SUCCESS) return 0;
-
     // Grab a link for the process (queuing format)
     if((l=AQueueAllocLink ((void *)currentPCB)) == NULL) 
     {  printf("FATAL ERROR: could not alocate link for cvar queue in CondHandleWait.\n"); exitsim(); }
@@ -421,11 +418,17 @@ int CondWait(Cond *cond) {
     if(AQueueInsertLast(&cond->waiting, l) != QUEUE_SUCCESS)
     {  printf("FATAL ERROR: could not insert new link in cvar queue in CondHandleWait.\n"); exitsim(); }
 
+    // Release the lock to not be "busy waiting"
+    if(LockHandleRelease(cond->lock) != SYNC_SUCCESS) return 0;
+    
+    // Restore process interrupts (BECOME !ATOMIC)
+    RestoreIntrs(intrval);
+    
     // Place process to sleep
     ProcessSleep();
     
-    // Restore interrupts (BECOME !ATOMIC)
-    RestoreIntrs(intrval);
+    // Process has been awakened! Get the lock back
+    if(LockHandleAcquire(cond->lock) != SYNC_SUCCESS) return 0;
 
     // Condition variable handled wait call successfully!
     return SYNC_SUCCESS;
@@ -472,7 +475,7 @@ int CondSignal(Cond *cond) {
     intrval = DisableIntrs();
     
     // Check the calling process actually has the lock
-    if(locks[cond->lock].pid != GetCurrentPid()) {  RestoreIntrs(intrval); return SYNC_FAIL;  }
+    if(locks[cond->lock].inuse != 1) {  RestoreIntrs(intrval); return SYNC_FAIL;  }
 
     // Check the queue to see if there is anyone to wake up... & if so, who?
     if(!AQueueEmpty(&cond->waiting)) {          

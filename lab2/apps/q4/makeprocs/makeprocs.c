@@ -12,14 +12,16 @@ void main (int argc, char *argv[])
   	circular_buffer * cbuf;         // Used to get address of shared memory page
   	uint32 h_mem;                   // Used to hold handle to shared memory page
  	sem_t s_procs_completed;        // Semaphore used wait until procs complete
-    sem_t s_fullslots;              // Semaphore indicating # of full slots in buffer
-    sem_t s_emptyslots;             // Semaphore indicating # of empty slots in buffer
+    cond_t not_full;                // Condvar indicating BUFFERSIZE full slots in buffer
+    cond_t not_empty;               // Condvar indicating BUFFERSIZE empty slots in buffer
+    lock_t l_buff;                  // Lock associated w/ buffer condvars
 	lock_t l_proc;					// Lock used to indicated critcal sections
     char h_mem_str[10];             // Used as CLA to pass mem_handle to procs
   	char s_procs_completed_str[10]; // Used as CLA to pass page_mapped hndl to procs	
 	char l_proc_str[10];			// Used as CLA to pass lock handle to procs
-    char s_fullslots_str[10];       // Used as CLA to pass fullslots sema handle
-    char s_emptyslots_str[10];      // Used as CLA to pass emptyslots sema handle
+    char l_buff_str[10];            // Used as CLA to pass cond var handle (lock)
+    char not_full_str[10];          // Used as CLA to pass full_buff cond var handle
+    char not_empty_str[10];         // Used as CLA to pass empty_buff cond var handle
 
 	// Check CLA's
   	if (argc != 2) 
@@ -46,17 +48,19 @@ void main (int argc, char *argv[])
 	if ((s_procs_completed = sem_create(-(numprocs-1))) == SYNC_FAIL) 
 	{  Printf("Bad sem_create in "); Printf(argv[0]); Printf("\n"); Exit();  }
 
-    // Create semaphore to indicate the number of full slots in the buffer
-    // Initialize to 0 b/c buffer is empty (nothing full)
-    if ((s_fullslots = sem_create(0)) == SYNC_FAIL)
-    {  Printf("Bad sem_create in "); Printf(argv[0]); Printf("\n"); Exit();  }
+    // Create a lock for condition variables regarding buffer
+	if((l_buff = lock_create()) == SYNC_FAIL)
+	{  Printf("ERROR: PROCESS COULD NOT INITIALIZE LOCK\n"); Exit();  }
 
-    // Create semaphore to indicate the number of empty slots in the buffer
-    // Initialize to BUFFERSIZE b/c buffer is empty (totally empty)
-    if ((s_emptyslots = sem_create(BUFFERSIZE)) == SYNC_FAIL)
-    {  Printf("Bad sem_create in "); Printf(argv[0]); Printf("\n"); Exit();  }
+    // Create conition variable not_full 
+	if((not_full = cond_create(l_buff)) == SYNC_FAIL)
+	{  Printf("ERROR: PROCESS COULD NOT INITIALIZE CONDITION VARIABLE\n"); Exit();  }
 
-	// Create a lock, check fail
+    // Create conition variable not_empty 
+	if((not_empty = cond_create(l_buff)) == SYNC_FAIL)
+	{  Printf("ERROR: PROCESS COULD NOT INITIALIZE CONDITION VARIABLE\n"); Exit();  }
+
+	// Create a general purpose lock
 	if((l_proc = lock_create()) == SYNC_FAIL)
 	{  Printf("ERROR: PROCESS COULD NOT INITIALIZE LOCK\n"); Exit();  }
 
@@ -64,18 +68,17 @@ void main (int argc, char *argv[])
   	ditoa(h_mem, h_mem_str);
 	ditoa(l_proc, l_proc_str);
   	ditoa(s_procs_completed, s_procs_completed_str);
-    ditoa(s_fullslots, s_fullslots_str);
-    ditoa(s_emptyslots, s_emptyslots_str);
+    ditoa(l_buff, l_buff_str);
+    ditoa(not_full, not_full_str);
+    ditoa(not_empty, not_empty_str);
 
 	// Now we can create the processes 
-  	for (i=0; i<numprocs; i++) 
-	{
-		// Pass each process the handle to memory, lock handle, semaphore handles
-   		process_create(PRODUCER_RUN, h_mem_str, l_proc_str, s_procs_completed_str, s_emptyslots_str, s_fullslots_str, NULL);
-		process_create(CONSUMER_RUN, h_mem_str, l_proc_str, s_procs_completed_str, s_emptyslots_str, s_fullslots_str, NULL);
-	}
-
-  	// And finally, wait until all spawned processes have finished.
+  	for (i=0; i<numprocs; i++)
+	{  process_create(CONSUMER_RUN, h_mem_str, l_proc_str, s_procs_completed_str, l_buff_str, not_empty_str, not_full_str, NULL);  }
+  	for (i=0; i<numprocs; i++)
+	{  process_create(PRODUCER_RUN, h_mem_str, l_proc_str, s_procs_completed_str, l_buff_str, not_empty_str, not_full_str, NULL);  }
+    
+    // And finally, wait until all spawned processes have finished.
   	if (sem_wait(s_procs_completed) != SYNC_SUCCESS) 
 	{  Printf("Bad semaphore s_procs_completed (%d) in ", s_procs_completed); Printf(argv[0]); Printf("\n"); Exit();  }
 
