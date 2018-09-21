@@ -64,7 +64,7 @@ int LockRelease(Lock *);
 typedef struct Cond {
     int inuse;          // Bookkeeping variable for free vs. used structures
     Queue waiting;      // Queue of processes waiting on condvar
-    lock_t lock;        // Associate lock handle passed from CondCreate
+    int lock;           // Associate lock handle passed from CondCreate
 } Cond;
 
 int CondInit(Cond *);

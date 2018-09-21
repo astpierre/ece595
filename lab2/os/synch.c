@@ -315,7 +315,8 @@ int LockHandleRelease(lock_t lock) {
 
 //--------------------------------------------------------------------------
 //	CondCreate
-//
+//--------------------------------------------------------------------------
+/*--------------------------------------------------------------------------
 //	This function grabs a condition variable from the system-wide pool of
 //	condition variables and associates the specified lock with
 //	it. It should also initialize all the fields that need to initialized.
@@ -326,44 +327,59 @@ int LockHandleRelease(lock_t lock) {
 //	condition variables left, or the specified lock is not a valid lock),
 //	this function should return INVALID_COND (see synch.h). Otherwise it
 //	should return handle of the condition variable.
-//--------------------------------------------------------------------------
-cond_t CondCreate(lock_t lock) 
-{
-    cond_t cv;
-    uint32 intrval;
-
-    // Atomically grab a condition variable
-    intrval = DisableIntrs();
-    for(cv=0; cv<MAX_CONDS; cv++) {
-        // grab first unused condition variable from pool
-        if(conds[cv].inuse==0) {
-            conds[cv].inuse = 1;
-            break;
-        }
-    }
-    RestoreIntrs(intrval);
-    // Check to make sure we found one
-    if(cv==MAX_CONDS) return INVALID_COND;
-
-    // Check that lock is valid and if so, save the handle in structure
-    if(lock < 0) return INVALID_COND;
-    if(lock >= MAX_LOCKS) return INVALID_COND;
-    if(!locks[lock].inuse) return INVALID_COND;
-    cv->lock = lock;
-    
+//--------------------------------------------------------------------------*/
+int CondInit(Cond *cond) {
+    // Check cond valid
+    if(!cond) return SYNC_FAIL;
+         
     // Initialize a queue for waiting processes
-    if(AQueueInit(&cv->waiting) != QUEUE_SUCCESS) {
+    if(AQueueInit(&cond->waiting) != QUEUE_SUCCESS) {
         printf("FATAL ERROR: could not initialize condition variable waiting queue in CondCreate\n");
         exitsim();
     }
 
+    // SUCCESSFUL INIT!
+    return SYNC_SUCCESS;
+}
+cond_t CondCreate(lock_t lock) 
+{
+    cond_t cond;
+    uint32 intrval;
+
+    // Atomically grab a condition variable
+    intrval = DisableIntrs();
+    for(cond=0; cond<MAX_CONDS; cond++) {
+        // grab first unused condition variable from pool
+        if(conds[cond].inuse==0) {
+            conds[cond].inuse = 1;
+            break;
+        }
+    }
+    // Become !Atomic
+    RestoreIntrs(intrval);
+
+    // Check to make sure we found one
+    if(cond==MAX_CONDS) return INVALID_COND;
+
+    // Check that the lock we were given is valid
+    if(lock < 0) return INVALID_COND;
+    if(lock >= MAX_LOCKS) return INVALID_COND;
+    if(!locks[lock].inuse) return INVALID_COND;
+
+    // Initialize!
+    if(CondInit(&conds[cond]) != SYNC_SUCCESS) return SYNC_FAIL;
+
+    // Save the lock handle in the structure
+    conds[cond].lock = lock;
+   
     // Return the handle to the condition variable
-    return cv;
+    return cond;
 }
 
 //---------------------------------------------------------------------------
 //	CondHandleWait
-//
+//---------------------------------------------------------------------------
+/*---------------------------------------------------------------------------
 //	This function makes the calling process block on the condition variable
 //	till either ConditionHandleSignal or ConditionHandleBroadcast is
 //	received. The process calling CondHandleWait must have acquired the
@@ -383,48 +399,52 @@ cond_t CondCreate(lock_t lock)
 //	the condition variable. In other words, this process does not
 //	"actually" wake up until the process calling CondHandleSignal or
 //	CondHandleBroadcast releases the lock explicitly.
-//---------------------------------------------------------------------------
-int CondHandleWait(cond_t c) {
+//---------------------------------------------------------------------------*/
+int CondWait(Cond *cond) {
     Link *l;
     int intrval;
     
-    // Check condition variable handle is valid
-    if(c < 0) return SYNC_FAIL;
-    if(c >= MAX_CONDS) return SYNC_FAIL;
-    if(!conds[c].inuse) return SYNC_FAIL;
-
     // Disable interrupts (BECOME ATOMIC)
     intrval = DisableIntrs();
     
     // Check the calling process actually has the lock
-    if(locks[conds[c].lock].pid != GetCurrentPid()) {  RestoreIntrs(intrval); return SYNC_FAIL;  }
+    if(locks[cond->lock].pid != GetCurrentPid()) {  RestoreIntrs(intrval); return SYNC_FAIL;  }
 
-    // Release the lock
-    if(LockHandleRelease(conds[c].lock) != SYNC_SUCCESS) return 0;
+    // Release the lock to not be "busy waiting"
+    if(LockHandleRelease(cond->lock) != SYNC_SUCCESS) return 0;
 
-    // Grab a link for the process
+    // Grab a link for the process (queuing format)
     if((l=AQueueAllocLink ((void *)currentPCB)) == NULL) 
     {  printf("FATAL ERROR: could not alocate link for cvar queue in CondHandleWait.\n"); exitsim(); }
 
     // Insert link in queue
-    if(AQueueInsertLast(conds[c].waiting, l) != QUEUE_SUCCESS)
+    if(AQueueInsertLast(&cond->waiting, l) != QUEUE_SUCCESS)
     {  printf("FATAL ERROR: could not insert new link in cvar queue in CondHandleWait.\n"); exitsim(); }
 
     // Place process to sleep
     ProcessSleep();
     
-    // Restore interrupts (!BECOME ATOMIC)
-    intrval = DisableIntrs();
+    // Restore interrupts (BECOME !ATOMIC)
+    RestoreIntrs(intrval);
 
     // Condition variable handled wait call successfully!
     return SYNC_SUCCESS;
 }
 
+int CondHandleWait(cond_t c) {       
+    // Check condition variable handle is valid
+    if(c < 0) return SYNC_FAIL;
+    if(c >= MAX_CONDS) return SYNC_FAIL;
+    if(!conds[c].inuse) return SYNC_FAIL;
 
+    // Send to worker and return result
+    return CondWait(&conds[c]);
+}
 
 //---------------------------------------------------------------------------
 //	CondHandleSignal
-//
+//---------------------------------------------------------------------------
+/*---------------------------------------------------------------------------
 //	This call wakes up exactly one process waiting on the condition
 //	variable, if at least one is waiting. If there are no processes
 //	waiting on the condition variable, it does nothing. In either case,
@@ -440,15 +460,56 @@ int CondHandleWait(cond_t c) {
 //	associated with the condition variable as soon as it wakes up. Thus,
 //	for such a process to run, the process invoking CondHandleSignal
 //	must explicitly release the lock after the call is complete.
-//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------*/
+int CondSignal(Cond *cond) {
+    Link *l;
+    int intrval;
+    PCB *pcb;
+    
+    if(!cond) return SYNC_FAIL;
+
+    // Disable interrupts (BECOME ATOMIC)
+    intrval = DisableIntrs();
+    
+    // Check the calling process actually has the lock
+    if(locks[cond->lock].pid != GetCurrentPid()) {  RestoreIntrs(intrval); return SYNC_FAIL;  }
+
+    // Check the queue to see if there is anyone to wake up... & if so, who?
+    if(!AQueueEmpty(&cond->waiting)) {          
+        // Get first process in line
+        l = AQueueFirst(&cond->waiting);
+        
+        // Retrieve process control block of process
+        pcb = (PCB *)AQueueObject(l);
+
+        // Remove from condition variable queue
+        if(AQueueRemove(&l) != QUEUE_SUCCESS) {  printf("FATAL ERROR: !rmv lnk frm condvar Q in CndHndSig\n"); exitsim();  }
+        
+        // Wakeup! HOWEVER: do not release lock... (MESA STYLE) 
+        // Mesa Style requires calling process to keep key and release l8r
+        ProcessWakeup(pcb);
+    }
+
+    // Restore interrupts (BECOME !ATOMIC)
+    RestoreIntrs(intrval);
+
+    // Condition variable handled signal call successfully!
+    return SYNC_SUCCESS;
+}
 int CondHandleSignal(cond_t c) {
-  // Your code goes here
-  return SYNC_SUCCESS;
+    // Check condition variable handle is valid
+    if(c < 0) return SYNC_FAIL;
+    if(c >= MAX_CONDS) return SYNC_FAIL;
+    if(!conds[c].inuse) return SYNC_FAIL;
+
+    // Send to worker and return result
+    return CondSignal(&conds[c]);
 }
 
 //---------------------------------------------------------------------------
 //	CondHandleBroadcast
-//
+//---------------------------------------------------------------------------
+/*---------------------------------------------------------------------------
 //	This function is very similar to CondHandleSignal. But instead of
 //	waking only one process, it wakes up all the processes waiting on the
 //	condition variable. For this call to succeed, the calling process must
@@ -460,8 +521,8 @@ int CondHandleSignal(cond_t c) {
 //	associated with the condition variable as soon as it wakes up. Thus,
 //	for such a process to run, the process invoking CondHandleBroadcast
 //	must explicitly release the lock after the call completion.
-//---------------------------------------------------------------------------
-int CondHandleBroadcast(cond_t c) {
-  // Your code goes here
-  return SYNC_SUCCESS;
+//---------------------------------------------------------------------------*/ 
+int CondHandleBroadcast(cond_t c) {  
+    // Your code goes here
+    return SYNC_SUCCESS;
 }
