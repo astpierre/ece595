@@ -16,7 +16,7 @@ void main (int argc, char *argv[])
 	sem_t sem_proc;					// Semaphore to signal the original proc
 	int i=0;						// While condition for # iters
     int now_room=0;                 // Check if buffer will have space after consuming
-    char usage[] = "<h_mem_pg> <h_l_gplock> <h_s_proc> <h_l_empty> <h_l_full> <h_cv_empty> <h_cv_full>\n";
+    char usage[] = "<h_mem_pg> <h_l_gplock> <h_s_proc> <h_l_empty> <h_l_full> <h_cv_Nempty> <h_cv_Nfull>\n";
 
 	// Check CLA's
   	if(argc != 7) 
@@ -43,8 +43,8 @@ void main (int argc, char *argv[])
         // If empty, wait 'till we get something to consume
         while(cbuf->head == cbuf->tail)
         {
-            // Get in queue to be signalled that buffer is full
-            cond_wait(not_empty); 
+            // Get in queue to be signalled when buffer is filled
+            cond_wait(not_empty);
         }
 
         // Check if the buffer was full b4 consuming this next item...
@@ -59,11 +59,11 @@ void main (int argc, char *argv[])
         // INCREMENT COUNTER
         i++;
 
-        // If buffer now empty, signal it!
+        // If buffer now has open slot, signal it!
         if(now_room == 1) 
         { 
             if(cond_signal(not_full) != SYNC_SUCCESS) 
-            {  Printf("Bad cond v. empty_buff (%d) in ",not_full); Printf(argv[0]); Printf(", exiting...\n"); Exit();  }
+            {  Printf("Bad cond v. not_full (%d) in ",not_full); Printf(argv[0]); Printf(", exiting...\n"); Exit();  }
             now_room == 0;
         }
         else cond_signal(not_full); 

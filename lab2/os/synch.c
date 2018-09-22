@@ -3,7 +3,6 @@
 //
 //	Routines for synchronization
 //
-//
 
 #include "ostraps.h"
 #include "dlxos.h"
@@ -16,11 +15,9 @@ static Lock locks[MAX_LOCKS];       // All locks in the system
 static Cond conds[MAX_CONDS];       // All cond vars in the system
 
 extern struct PCB *currentPCB; 
-//----------------------------------------------------------------------
-//	SynchModuleInit
-//
-//	Initializes the synchronization primitives: the semaphores
-//----------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//	SynchModuleInit ~ Initializes the synchronization primitives
+//---------------------------------------------------------------------------
 int SynchModuleInit() {
     int i; // Loop Index variable
     dbprintf ('p', "SynchModuleInit: Entering SynchModuleInit\n");
@@ -39,14 +36,13 @@ int SynchModuleInit() {
     return SYNC_SUCCESS;
 }
 
-//---------------------------------------------------------------------
-//
+//---------------------------------------------------------------------------
 //	SemInit
-//
+//---------------------------------------------------------------------------
+/*---------------------------------------------------------------------------
 //	Initialize a semaphore to a particular value.  This just means
 //	initting the process queue and setting the counter.
-//
-//----------------------------------------------------------------------
+//--------------------------------------------------------------------------*/
 int SemInit (Sem *sem, int count) {
     if (!sem) return SYNC_FAIL;
     if (AQueueInit (&sem->waiting) != QUEUE_SUCCESS) {
@@ -57,13 +53,14 @@ int SemInit (Sem *sem, int count) {
     return SYNC_SUCCESS;
 }
 
-//----------------------------------------------------------------------
+//---------------------------------------------------------------------------
 // 	SemCreate
-//
+//---------------------------------------------------------------------------
+/*---------------------------------------------------------------------------
 //	Grabs a Semaphore, initializes it and returns a handle to this
 //	semaphore. All subsequent accesses to this semaphore should be made
 //	through this handle.  Returns SYNC_FAIL on failure.
-//----------------------------------------------------------------------
+//--------------------------------------------------------------------------*/
 sem_t SemCreate(int count) {
     sem_t sem;
     uint32 intrval;
@@ -84,17 +81,16 @@ sem_t SemCreate(int count) {
 }
 
 
-//----------------------------------------------------------------------
-//
+//---------------------------------------------------------------------------
 //	SemWait
-//
+//---------------------------------------------------------------------------
+/*---------------------------------------------------------------------------
 //	Wait on a semaphore.  As described in Section 6.4 of _OSC_,
 //	we decrement the counter and suspend the process if the
 //	semaphore's value is less than 0.  To ensure atomicity,
 //	interrupts are disabled for the entire operation, but must be
 //      turned on before going to sleep.
-//
-//----------------------------------------------------------------------
+//--------------------------------------------------------------------------*/
 int SemWait (Sem *sem) {
   Link	*l;
   int		intrval;
@@ -131,14 +127,12 @@ int SemHandleWait(sem_t sem) {
   return SemWait(&sems[sem]);
 }
 
-//----------------------------------------------------------------------
-//
+//---------------------------------------------------------------------------
 //	SemSignal
-//
-//	Signal on a semaphore.  Again, details are in Section 6.4 of
-//	_OSC_.
-//
-//----------------------------------------------------------------------
+//---------------------------------------------------------------------------
+/*---------------------------------------------------------------------------	
+//	Signal on a semaphore.  Again, details are in Section 6.4 of _OSC_.
+//--------------------------------------------------------------------------*/
 int SemSignal (Sem *sem) {
   Link *l;
   int	intrs;
@@ -175,9 +169,10 @@ int SemHandleSignal(sem_t sem) {
   return SemSignal(&sems[sem]);
 }
 
-//-----------------------------------------------------------------------
+//---------------------------------------------------------------------------
 //	LockCreate
-//
+//---------------------------------------------------------------------------
+/*---------------------------------------------------------------------------
 //	LockCreate grabs a lock from the systeme-wide pool of locks and 
 //	initializes it.
 //	It also sets the inuse flag of the lock to indicate that the lock is
@@ -187,7 +182,7 @@ int SemHandleSignal(sem_t sem) {
 //
 //	If a new lock cannot be created, your implementation should return
 //	INVALID_LOCK (see synch.h).
-//-----------------------------------------------------------------------
+//---------------------------------------------------------------------------*/
 lock_t LockCreate() {
   lock_t l;
   uint32 intrval;
@@ -201,14 +196,14 @@ lock_t LockCreate() {
     }
   }
   RestoreIntrs(intrval);
-  if(l==MAX_LOCKS) return SYNC_FAIL;
+  if(l==MAX_LOCKS) return INVALID_LOCK;
 
-  if (LockInit(&locks[l]) != SYNC_SUCCESS) return SYNC_FAIL;
+  if (LockInit(&locks[l]) != SYNC_SUCCESS) return INVALID_LOCK;
   return l;
 }
 
 int LockInit(Lock *l) {
-  if (!l) return SYNC_FAIL;
+  if (!l) return INVALID_LOCK;
   if (AQueueInit (&l->waiting) != QUEUE_SUCCESS) {
     printf("FATAL ERROR: could not initialize lock waiting queue in LockInit!\n");
     exitsim();
@@ -219,12 +214,13 @@ int LockInit(Lock *l) {
 
 //---------------------------------------------------------------------------
 //	LockHandleAcquire
-//
+//---------------------------------------------------------------------------
+/*---------------------------------------------------------------------------
 //	This routine acquires a lock given its handle. The handle must be a 
 //	valid handle for this routine to succeed. In that case this routine 
 //	returns SYNC_FAIL. Otherwise the routine returns SYNC_SUCCESS.
 //
-//---------------------------------------------------------------------------
+//--------------------------------------------------------------------------*/
 int LockAcquire(Lock *k) {
   Link	*l;
   int		intrval;
@@ -271,13 +267,14 @@ int LockHandleAcquire(lock_t lock) {
 
 //---------------------------------------------------------------------------
 //	LockHandleRelease
-//
+//---------------------------------------------------------------------------
+/*---------------------------------------------------------------------------
 //	This procedure releases the unique lock described by the handle. It
 //	first checks whether the lock is a valid lock. If not, it returns SYNC_FAIL.
 //	If the lock is a valid lock, it should check whether the calling
 //	process actually holds the lock. If not it returns SYNC_FAIL. Otherwise it
 //	releases the lock, and returns SYNC_SUCCESS.
-//---------------------------------------------------------------------------
+//--------------------------------------------------------------------------*/
 int LockRelease(Lock *k) {
   Link *l;
   int	intrs;
@@ -492,7 +489,6 @@ int CondSignal(Cond *cond) {
         // Mesa Style requires calling process to keep key and release l8r
         ProcessWakeup(pcb);
     }
-
     // Restore interrupts (BECOME !ATOMIC)
     RestoreIntrs(intrval);
 
@@ -525,7 +521,48 @@ int CondHandleSignal(cond_t c) {
 //	for such a process to run, the process invoking CondHandleBroadcast
 //	must explicitly release the lock after the call completion.
 //---------------------------------------------------------------------------*/ 
-int CondHandleBroadcast(cond_t c) {  
-    // Your code goes here
+int CondBroadcast(Cond *cond) {
+    Link *l;
+    int intrval;
+    PCB *pcb;
+    
+    if(!cond) return SYNC_FAIL;
+
+    // Disable interrupts (BECOME ATOMIC)
+    intrval = DisableIntrs();
+    
+    // Check the calling process actually has the lock
+    if(locks[cond->lock].inuse != 1) {  RestoreIntrs(intrval); return SYNC_FAIL;  }
+
+    // Check the queue to see if there is anyone to wake up... & if so, who?
+    // NOTE: while utilized rather than if to fully empty the queue (BROADCAST)
+    while(!AQueueEmpty(&cond->waiting)) {          
+        // Get first process in line
+        l = AQueueFirst(&cond->waiting);
+        
+        // Retrieve process control block of process
+        pcb = (PCB *)AQueueObject(l);
+
+        // Remove from condition variable queue
+        if(AQueueRemove(&l) != QUEUE_SUCCESS) {  printf("FATAL ERROR: !rmv lnk frm condvar Q in CndHndSig\n"); exitsim();  }
+        
+        // Wakeup! HOWEVER: do not release lock... (MESA STYLE) 
+        // Mesa Style requires calling process to keep key and release l8r
+        ProcessWakeup(pcb);
+    }
+    // Restore interrupts (BECOME !ATOMIC)
+    RestoreIntrs(intrval);
+
+    // Condition variable handled broadcast call successfully!
     return SYNC_SUCCESS;
+}
+
+int CondHandleBroadcast(cond_t c) {  
+    // Check condition variable handle is valid
+    if(c < 0) return SYNC_FAIL;
+    if(c >= MAX_CONDS) return SYNC_FAIL;
+    if(!conds[c].inuse) return SYNC_FAIL;
+
+    // Send to worker and return result
+    return CondBroadcast(&conds[c]); 
 }

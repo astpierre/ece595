@@ -17,7 +17,7 @@ void main (int argc, char *argv[])
 	int i=0;						// While condition for # iters
     int now_something=0;            // Check if buffer will b full after producing
 	char hello[11] = "Hello World";	// Value placed in buffer
-    char usage[] = "<h_shared_memory_pg> <h_lock> <h_proc_semaphore> <h_s_emptyslots> <h_s_fullslots>\n";
+    char usage[] = "<h_shared_memory_pg> <h_lock> <h_proc_semaphore> <h_l_buff> <h_c_notEmpty> <h_c_notFull>\n";
 
 	// Check CLA's
   	if (argc != 7) 
@@ -38,13 +38,13 @@ void main (int argc, char *argv[])
 	// Access shared memory and place characters one by one
 	while(i < 11)
 	{
-        // Grab lock associated with buffer condvars
+        // Grab lock associated with buffer condvar's
 	    while(lock_acquire(l_buff) != SYNC_SUCCESS);
 
-        // If full, wait 'till not_empty gets signaled
+        // If full, wait 'till not_full gets signaled
         while(cbuf->head == (cbuf->tail+1)%BUFFERSIZE)
         {
-            // Get in queue to be signalled when buffer is empty
+            // Get in queue to be signalled when buffer has space
             cond_wait(not_full);
         }
 
@@ -61,13 +61,12 @@ void main (int argc, char *argv[])
         // UPDATE INCREMENTER
 		i++;
 
-        // If buffer now has something, signal it!
+        // If buffer now has something (and previously was empty), signal it!
         if(now_something == 1) 
         { 
             if(cond_signal(not_empty) != SYNC_SUCCESS) 
             {  Printf("Bad cond v. empty_buff (%d) in ",not_empty); Printf(argv[0]); Printf(", exiting...\n"); Exit();  }
-            // NOT FOR LONG...
-            now_something == 0;
+            now_something = 0;	
         }
         else cond_signal(not_empty); 
 
