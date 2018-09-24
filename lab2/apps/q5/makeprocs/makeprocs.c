@@ -7,81 +7,111 @@
 void main (int argc, char *argv[])
 {
 	// Variable declarations
-	int numprocs = 0;               // Used to store number of processes to create
-  	int i;                          // Loop index variable
-  	circular_buffer * cbuf;         // Used to get address of shared memory page
-  	uint32 h_mem;                   // Used to hold handle to shared memory page
+	int num_nn = 0;                 // Used to store number of processes to create
+	int num_hho = 0;		// Used to store number of hho elements
+	int r3_count=0;
+	int expected_procs=0; 		// Expected total # processes
+
+	int tmp=0;			// Tmp variable
+  	int i=0;                        // Loop index variable
  	sem_t s_procs_completed;        // Semaphore used wait until procs complete
-    cond_t not_full;                // Condvar indicating BUFFERSIZE full slots in buffer
-    cond_t not_empty;               // Condvar indicating BUFFERSIZE empty slots in buffer
-    lock_t l_buff;                  // Lock associated w/ buffer condvars
-	lock_t l_proc;					// Lock used to indicated critcal sections
-    char h_mem_str[10];             // Used as CLA to pass mem_handle to procs
   	char s_procs_completed_str[10]; // Used as CLA to pass page_mapped hndl to procs	
-	char l_proc_str[10];			// Used as CLA to pass lock handle to procs
-    char l_buff_str[10];            // Used as CLA to pass cond var handle (lock)
-    char not_full_str[10];          // Used as CLA to pass full_buff cond var handle
-    char not_empty_str[10];         // Used as CLA to pass empty_buff cond var handle
+
+	sem_t s_nn;		 // N2 (input)
+	sem_t s_hho;		 // H20 (input)
+	sem_t s_n;		 // N
+	sem_t s_hh;		 // H2 (final product)
+	sem_t s_oo;		 // O2
+	sem_t s_noo;		 // NO2 (final product)
+	char s_nn_str[10];       // Used as CLA to pass nn sema handle
+	char s_hho_str[10];      // Used as CLA to pass hho sema handle
+	char s_n_str[10];        // Used as CLA to pass n sema handle
+	char s_hh_str[10];       // Used as CLA to pass hh sema handle
+	char s_oo_str[10];       // Used as CLA to pass oo sema handle
+	char s_noo_str[10];      // Used as CLA to pass noo sema handle
+
+	char final_hho[10];
+	char final_noo[10];
+
 
 	// Check CLA's
-  	if (argc != 2) 
-	{  Printf("Usage: "); Printf(argv[0]); Printf(" <number of processes to create>\n"); Exit();  }
+  	if (argc != 3) 
+	{  Printf("Usage: "); Printf(argv[0]); Printf(" <number of n2 molecules> <number of h2o molecules>\n"); Exit();  }
 
   	// Convert string from ascii command line argument to integer number
-  	numprocs = dstrtol(argv[1], NULL, 10);
-  	Printf("Creating %d processes...\n", numprocs);
+  	num_nn = dstrtol(argv[1], NULL, 10);
+  	Printf("Injecting %d N2...\n", num_nn);
+  	num_hho = dstrtol(argv[2], NULL, 10);
+  	Printf("Injecting %d H2O...\n", num_hho);
 
-  	// Allocate space for a shared memory page, which is exactly 64KB 
-  	if ((h_mem = shmget()) == 0) 
-	{  Printf("ERROR: could not allocate shared memory page in "); Printf(argv[0]); Printf(", exiting...\n"); Exit();  }
-  	
-	// Map shared memory page into this process's memory space
-  	if ((cbuf = (circular_buffer *)shmat(h_mem)) == NULL) 
-	{  Printf("Could not map the shared page to v address in "); Printf(argv[0]); Printf(", exiting..\n"); Exit();  }
+	// Use floor division to calculate the max # output 
+	if ((num_nn * 2) > (num_hho / 2)) r3_count = (num_hho/2);
+	else r3_count = (num_nn * 2);
+	expected_procs += r3_count;
+	expected_procs += num_nn * 2;
+	expected_procs += num_hho / 2;
+	expected_procs += num_hho / 2;
 
-  	// Initialize the circular buffer
-	cbuf->head = 0;
-	cbuf->tail = 0;
-
-  	// Create semaphore to not exit this process until all other processes
-  	// have signalled that they are complete. Initialize to (-1)*(numprocs)  
-	if ((s_procs_completed = sem_create(-(numprocs-1))) == SYNC_FAIL) 
+  	// Create semaphore to indicate the number of n molecules
+  	// have signalled that they are complete. Initialize to (-2)*(numnn)
+	if ((s_n = sem_create(0)) == SYNC_FAIL)
 	{  Printf("Bad sem_create in "); Printf(argv[0]); Printf("\n"); Exit();  }
 
-    // Create a lock for condition variables regarding buffer
-	if((l_buff = lock_create()) == SYNC_FAIL)
-	{  Printf("ERROR: PROCESS COULD NOT INITIALIZE LOCK\n"); Exit();  }
+  	// Create semaphore to indicate the number of hh molecules
+  	// have signalled that they are complete. Initialize to (-1)*(numhho)  
+	if ((s_hh = sem_create(0)) == SYNC_FAIL)
+	{  Printf("Bad sem_create in "); Printf(argv[0]); Printf("\n"); Exit();  }
 
-    // Create conition variable not_full 
-	if((not_full = cond_create(l_buff)) == SYNC_FAIL)
-	{  Printf("ERROR: PROCESS COULD NOT INITIALIZE CONDITION VARIABLE\n"); Exit();  }
+  	// Create semaphore to indicate the number of oo molecules
+  	// have signalled that they are complete. Initialize to (-1)*(numhho/2)  
+	if ((s_oo = sem_create(0)) == SYNC_FAIL) 
+	{  Printf("Bad sem_create in "); Printf(argv[0]); Printf("\n"); Exit();  }
 
-    // Create conition variable not_empty 
-	if((not_empty = cond_create(l_buff)) == SYNC_FAIL)
-	{  Printf("ERROR: PROCESS COULD NOT INITIALIZE CONDITION VARIABLE\n"); Exit();  }
+  	// Create semaphore to indicate the number of noo molecules
+  	// have signalled that they are complete. Initialize to (-1)*(min{n,oo})  
+	if ((s_noo = sem_create(0)) == SYNC_FAIL) 
+	{  Printf("Bad sem_create in "); Printf(argv[0]); Printf("\n"); Exit();  }
 
-	// Create a general purpose lock
-	if((l_proc = lock_create()) == SYNC_FAIL)
-	{  Printf("ERROR: PROCESS COULD NOT INITIALIZE LOCK\n"); Exit();  }
+	if ((s_nn = sem_create(0)) == SYNC_FAIL) 
+	{  Printf("Bad sem_create in "); Printf(argv[0]); Printf("\n"); Exit();  }
+
+	if ((s_hho = sem_create(0)) == SYNC_FAIL) 
+	{  Printf("Bad sem_create in "); Printf(argv[0]); Printf("\n"); Exit();  }
+
+  	// Create semaphore to not exit this process until all other processes
+  	// have signalled that they are complete. Initialize to (-1)*(numnn + numhho)  
+	if ((s_procs_completed = sem_create(-(expected_procs-1))) == SYNC_FAIL) 
+	{  Printf("Bad sem_create in "); Printf(argv[0]); Printf("\n"); Exit();  }
 
   	// Setup the command-line arguments for the new processes
-  	ditoa(h_mem, h_mem_str);
-	ditoa(l_proc, l_proc_str);
   	ditoa(s_procs_completed, s_procs_completed_str);
-    ditoa(l_buff, l_buff_str);
-    ditoa(not_full, not_full_str);
-    ditoa(not_empty, not_empty_str);
+	ditoa(s_n, s_n_str);
+	ditoa(s_hh, s_hh_str);
+	ditoa(s_oo, s_oo_str);
+	ditoa(s_noo, s_noo_str);
+	ditoa(s_nn, s_nn_str);
+	ditoa(s_hho, s_hho_str);
 
-	// Now we can create the processes 
-  	for (i=0; i<numprocs; i++)
-	{  process_create(CONSUMER_RUN, h_mem_str, l_proc_str, s_procs_completed_str, l_buff_str, not_empty_str, not_full_str, NULL);  }
-  	for (i=0; i<numprocs; i++)
-	{  process_create(PRODUCER_RUN, h_mem_str, l_proc_str, s_procs_completed_str, l_buff_str, not_empty_str, not_full_str, NULL);  }
-    
-    // And finally, wait until all spawned processes have finished.
+	// Now we can create the processes
+	// Modify parameters to pass in
+	for (i=0; i<r3_count; i++)
+	{  process_create(REACTION3_RUN, s_procs_completed_str, s_n_str, s_oo_str, s_noo_str, NULL);  }
+	for (i=0; i<(num_hho/2); i++)
+	{  process_create(REACTION2_RUN, s_procs_completed_str, s_hho_str, s_hh_str, s_oo_str, NULL);  }
+	for (i=0; i<num_nn; i++)
+	{  process_create(REACTION1_RUN, s_procs_completed_str, s_nn_str, s_n_str, NULL);  }
+  	for (i=0; i<num_nn; i++)
+	{  process_create(INJECTION1_RUN, s_procs_completed_str, s_nn_str, NULL);  }
+  	for (i=1; i<=(num_hho); i++)
+	{  
+		if(i%2 == 0) process_create(INJECTION2_RUN, s_procs_completed_str, s_hho_str, NULL);
+		else Printf("SKIPPING SIGNALLING ODD H2O (need multiples of 2).\n");
+	}
+    	// And finally, wait until all spawned processes have finished.
   	if (sem_wait(s_procs_completed) != SYNC_SUCCESS) 
 	{  Printf("Bad semaphore s_procs_completed (%d) in ", s_procs_completed); Printf(argv[0]); Printf("\n"); Exit();  }
 
 	// Done here, exiting
   	Printf("All producers/consumers have completed, exiting main process.\n");
+	Printf("Final H2 and NO2 counts complete.\n");
 }

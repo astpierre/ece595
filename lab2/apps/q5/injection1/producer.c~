@@ -4,6 +4,8 @@
 
 #include "q1.h"
 
+// Producer for NN
+
 void main (int argc, char *argv[])
 {
 	// Variable declarations
@@ -16,14 +18,15 @@ void main (int argc, char *argv[])
 	sem_t sem_proc;					// Semaphore to signal the original proc
 	int i=0;						// While condition for # iters
     int now_something=0;            // Check if buffer will b full after producing
-	char hello[11] = "Hello World";	// Value placed in buffer
+	char nn_element[2] = "NN";	// Value placed in buffer
     char usage[] = "<h_shared_memory_pg> <h_lock> <h_proc_semaphore> <h_l_buff> <h_c_notEmpty> <h_c_notFull>\n";
 
 	// Check CLA's
   	if (argc != 7) 
     {  Printf("Usage: "); Printf(argv[0]); Printf(usage); Exit();  }
 
-  	// Convert the command-line strings into integers for use as handles
+	Printf("TEST"); 
+ 	// Convert the command-line strings into integers for use as handles
   	h_mem = dstrtol(argv[1], NULL, 10);
   	lock = dstrtol(argv[2], NULL, 10);
 	sem_proc = dstrtol(argv[3], NULL, 10);
@@ -36,7 +39,7 @@ void main (int argc, char *argv[])
     {  Printf("Could not map the virtual address to the memory in "); Printf(argv[0]); Printf(", exiting...\n"); Exit();  }
 
 	// Access shared memory and place characters one by one
-	while(i < 11)
+	while(i < 2)
 	{
         // Grab lock associated with buffer condvar's
 	    while(lock_acquire(l_buff) != SYNC_SUCCESS);
@@ -52,7 +55,7 @@ void main (int argc, char *argv[])
         if(cbuf->head == (cbuf->tail+1)%BUFFERSIZE) now_something = 1;
 		
         // ADD CHAR TO BUFFER
-		cbuf->buffer[cbuf->tail] = hello[i];
+		cbuf->buffer[cbuf->tail] = nn_element[i];
 		Printf("Producer %d inserted: %c\n",Getpid(), cbuf->buffer[cbuf->tail]);
 		
         // UPDATE TAIL
