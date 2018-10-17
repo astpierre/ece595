@@ -1,4 +1,4 @@
-# ECE595 Intro to Operating Systems (DLXOS) Programming Projects
+# ECE595 Intro to OS (DLXOS) Projects
 
 ## Student name: Andrew St. Pierre
 ## Course: ECE595 Intro to Operating Systems, Fall 2018  
