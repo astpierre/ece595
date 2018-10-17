@@ -1,6 +1,6 @@
 # ECE595 Intro to Operating Systems (DLXOS) Programming Projects
 
-## Team members: Andrew St. Pierre + Eli Kern
+## Student name: Andrew St. Pierre
 ## Course: ECE595 Intro to Operating Systems, Fall 2018  
 
 
@@ -13,6 +13,11 @@
 #### Description
 > The purpose of this lab is to become familiar with the problems of process synchronization and their solutions using OS-provided synchronization primitives. In particular, you will solve the classic producer-consumer problem using the following different combinations of synchronization primitives: locks, semaphores, and locks with conditional variables.  
 > In addition to solving the producer-consumer problem, you will also implement one of the synchronization primitives inside the OS. In particular, for this lab, we will provide you with the implementation code for semaphores and locks in synch.c and synch.h, and you need to write the code to implement condition variables in synch.c and synch.h.  
+
+
+### [ECE595 Programming Project 3](https://engineering.purdue.edu/~ece595/labs_2018/lab3.html)
+#### Description  
+> The purpose of this lab is to become familiar with memory management techniques related to paging. In particular, you will accomplish the implementation of dynamic one-level paging in DLXOS, UNIX-style fork() with copy on write, and heap management on top of one-level paging in DLXOS.
 
 
 ### References
