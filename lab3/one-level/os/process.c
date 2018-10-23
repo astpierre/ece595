@@ -53,8 +53,6 @@ int ProcessGetCodeInfo(const char *file, uint32 *startAddr, uint32 *codeStart, u
 int ProcessGetFromFile(int fd, unsigned char *buf, uint32 *addr, int max);
 uint32 get_argument(char *string);
 
-
-
 //----------------------------------------------------------------------
 //
 //	ProcessModuleInit
@@ -158,7 +156,6 @@ void ProcessSetResult (PCB * pcb, uint32 result) {
   pcb->currentSavedFrame[PROCESS_STACK_IREG+1] = result;
 }
 
-
 //----------------------------------------------------------------------
 //
 //	ProcessSchedule
@@ -296,7 +293,6 @@ void ProcessWakeup (PCB *wakeup) {
   }
 }
 
-
 //----------------------------------------------------------------------
 //
 //	ProcessDestroy
@@ -341,7 +337,6 @@ static void ProcessExit () {
   exit ();
 }
 
-
 //----------------------------------------------------------------------
 //
 //	ProcessFork
@@ -589,7 +584,7 @@ int ProcessFork (VoidFunc func, uint32 param, char *name, int isUser) {
   // from the base of the PCB array).
   return (pcb - pcbs);
 }
-
+
 //----------------------------------------------------------------------
 //
 //	getxvalue
@@ -608,7 +603,7 @@ static inline int getxvalue (int x) {
     return (0);
   }
 }
-
+
 //----------------------------------------------------------------------
 //
 //	ProcessGetCodeSizes
@@ -660,7 +655,7 @@ ProcessGetCodeInfo (const char *file, uint32 *startAddr,
   return (fd);
 }
 
-
+
 //----------------------------------------------------------------------
 //
 //	ProcessGetFromFile
@@ -761,7 +756,7 @@ ProcessGetFromFile (int fd, unsigned char *buf, uint32 *addr, int max)
 	    (int)(seekpos + lpos - localbuf), nbytes);
   return (nbytes);
 }
-
+
 //----------------------------------------------------------------------
 //
 //	main
