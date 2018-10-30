@@ -1,0 +1,14 @@
+# General rules for building one application out of many
+# source files.  This file is only intended to be included
+# in the Makefiles of the subdirectories of the top-level
+# app directory
+
+HDRS=usertraps.h
+#FINALHDRS+=../include/spawn.h
+APPROOT=../..
+INCDIR+=-I../include
+
+top: default
+
+run:
+	cd ../; make run

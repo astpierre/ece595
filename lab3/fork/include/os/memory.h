@@ -28,5 +28,6 @@ int MemoryAllocPage(void);
 uint32 MemorySetupPTE(uint32 page);
 void MemoryFreePTE(uint32);
 void MemoryFreePage(uint32 page);
+void MemoryROPAccessHandler(PCB * pcb);
 
 #endif	// _memory_h_

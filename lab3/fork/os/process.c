@@ -354,6 +354,146 @@ static void ProcessExit () {
 }
 
 //----------------------------------------------------------------------
+//	ProcessRealFork
+//	
+//	Implements fork() system call with one-level page tables using
+//	copy-on-write.
+//----------------------------------------------------------------------
+int ProcessRealFork(PCB * parent_pcb) 
+{
+    int i;                   // Loop index variable
+    PCB * child_pcb;         // Stores pcb while we build it for the proc
+    uint32 *stackframe;      // Stores address of current stack frame
+    int intrs;               // Stores previous interrupt settings
+    uint32 newPage;          // Stores the return value when alloc pages
+
+    // Disable interrupts
+    intrs = DisableIntrs();
+    
+    // Debug print statement
+    dbprintf ('m', "ProcessRealFork: (PID:%d) function started\n", GetCurrentPid()); 
+    dbprintf ('I', "Old interrupt value was 0x%x.\n", intrs);
+    
+    // Check for availible PCBs
+    if (AQueueEmpty(&freepcbs)) 
+    {  
+        printf ("FATAL error: no free processes!\n"); 
+        return PROCESS_FORK_FAILURE;
+    } 
+    
+    // Get a free PCB for the child process
+    child_pcb = (PCB *)AQueueObject(AQueueFirst (&freepcbs));
+    
+    // Debug print statement
+    dbprintf ('p', "Got a link @ 0x%x\n", (int)(child_pcb->l));
+    
+    // Remove link from queue of free pcb's
+    if (AQueueRemove (&(child_pcb->l)) != QUEUE_SUCCESS) 
+    {  
+        printf("FATAL ERROR: could not remove link from freepcbsQueue in ProcessFork!\n"); 
+        return PROCESS_FORK_FAILURE;
+    }
+    
+    // This prevents someone else from grabbing this process
+    ProcessSetStatus(child_pcb, PROCESS_STATUS_RUNNABLE);
+
+    // At this point, the PCB is allocated and nobody else can get it.
+    // However, it's not in the run queue, so it won't be run.  Thus, we
+    // can turn on interrupts here.
+    RestoreIntrs(intrs);
+
+    // Copy the process name into the PCB
+    dstrcpy(child_pcb->name, parent_pcb->name);
+
+    //----------------------------------------------------------------------
+    // This section initializes the memory for this process
+    //----------------------------------------------------------------------
+
+    // The parent and child processes share the same global data and code
+    for(i=0; i<PROCESS_NUMPAGES_USERCODE_GLOBALDATA; i++)
+    {
+        // Change respective parent pcb pagetable pages to be READONLY
+        parent_pcb->pagetable[i] |= MEM_PTE_READONLY;
+
+        // Share this page with child
+        MemorySharePage(parent_pcb->pagetable[i]);
+    }
+
+    // Stack is shared until child writes to it
+    parent_pcb->pagetable[MEM_MAX_VIRTUAL_ADDRESS >> MEM_L1FIELD_FIRST_BITNUM] |= MEM_PTE_READONLY;
+    MemorySharePage(parent_pcb->pagetable[MEM_MAX_VIRTUAL_ADDRESS >> MEM_L1FIELD_FIRST_BITNUM]);
+
+    // Use bcopy to make copy of parent pcb as child pcb
+    bcopy((char *)parent_pcb, (char *)child_pcb, sizeof(PCB));
+    
+    // Allocate page for sys stack, check for error
+    newPage = MemoryAllocPage();
+    if(newPage == 0)
+    {  
+        printf("FATAL: couldnt alloc mem, no free pgs!\n"); 
+        ProcessFreeResources(child_pcb);  
+        return PROCESS_FORK_FAILURE;
+    }
+    
+    stackframe = ((uint32 *)(newPage*MEM_PAGESIZE + (MEM_PAGESIZE - 4)));
+    child_pcb->sysStackArea = newPage * MEM_PAGESIZE;
+    
+    // Now that the stack frame points at the bottom of the system stack memory area, we need to
+    // move it up (decrement it) by one stack frame size because we're about to fill in the
+    // initial stack frame that will be loaded for this PCB when it gets switched in by 
+    // ProcessSchedule the first time.
+    stackframe -= PROCESS_STACK_FRAME_SIZE;
+
+    // The system stack pointer is set to the base of the current interrupt stack frame.
+    child_pcb->sysStackPtr = stackframe;
+    // The current stack frame pointer is set to the same thing.
+    child_pcb->currentSavedFrame = stackframe;
+
+    //----------------------------------------------------------------------
+    // STUDENT: setup the PTBASE, PTBITS, and PTSIZE here on the current
+    // stack frame.
+    //----------------------------------------------------------------------
+    stackframe[PROCESS_STACK_PTBASE] = (uint32)&(child_pcb->pagetable[0]);
+    stackframe[PROCESS_STACK_PTBITS] = (MEM_L1FIELD_FIRST_BITNUM | MEM_L1FIELD_FIRST_BITNUM << 16);
+    stackframe[PROCESS_STACK_PTSIZE] = PROCESS_PAGETABLESIZE;
+    
+    // Place the PCB onto the run queue
+    intrs = DisableIntrs ();
+    if ((child_pcb->l = AQueueAllocLink(child_pcb)) == NULL) 
+    {
+        printf("FATAL ERROR: could not get link for forked PCB in ProcessFork!\n");
+        return PROCESS_FORK_FAILURE;
+    }
+    if (AQueueInsertLast(&runQueue, child_pcb->l) != QUEUE_SUCCESS) 
+    {
+        printf("FATAL ERROR: could not insert link into runQueue in ProcessFork!\n");
+        return PROCESS_FORK_FAILURE;
+    }
+    RestoreIntrs (intrs);
+
+    // Set result of processes
+    ProcessSetResult(child_pcb, 0);
+    ProcessSetResult(parent_pcb, GetPidFromAddress(child_pcb));
+
+    return PROCESS_FORK_SUCCESS;
+}
+void ProcessForkTestPrints(PCB * pcb)
+{
+    int i;
+    uint32 pte;
+    int page;
+    for(i=0; i<MEM_PAGETABLE_SIZE; i++)
+    {
+        pte = pcb->pagetable[i];
+        page = (pte*MEM_PTE_MASK)>>MEM_L1FIELD_FIRST_BITNUM;
+        if(pte&MEM_PTE_VALID)
+        {
+            printf("pagetable[%d=0x%x]=>0x%x ppage=%d\n",i,i*MEM_PAGESIZE,pcb->pagetable[i],page);
+        }
+    }
+}
+
+//----------------------------------------------------------------------
 //
 //	ProcessFork
 //

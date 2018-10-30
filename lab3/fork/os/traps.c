@@ -360,6 +360,7 @@ dointerrupt (unsigned int cause, unsigned int iar, unsigned int isr,
       break;
     case TRAP_PROCESS_FORK:
       dbprintf ('t', "Got a fork trap!\n");
+      ProcessRealFork(currentPCB);
       break;
     case TRAP_PROCESS_SLEEP:
       dbprintf ('t', "Got a process sleep trap!\n");
@@ -530,6 +531,10 @@ dointerrupt (unsigned int cause, unsigned int iar, unsigned int isr,
       printf ("Exiting after illegal instruction at iar=0x%x, isr=0x%x\n",
 	      iar, isr);
       exitsim ();
+      break;
+    case TRAP_ROP_ACCESS:
+      printf("Handling ROP Access. (COPY-ON-WRITE)\n");
+      MemoryROPAccessHandler(currentPCB);
       break;
     case TRAP_PAGEFAULT:
       MemoryPageFaultHandler(currentPCB);

@@ -14,10 +14,11 @@
 //  Each bit represents a page, so we create the free
 //  map to be composed of MEM_MAX_PAGES/32 ints.
 static uint32 freemap[MEM_MAX_PAGES >> 5];
-//static uint32 pagestart;
-//static int nfreepages;
-//static int freemapmax;
-
+static char pagereferencecounter[MEM_MAX_SIZE >> MEM_L1FIELD_FIRST_BITNUM];
+static uint32 pagestart;
+static int nfreepages;
+static int freemapmax;
+static int physicalpgmax; 
 //----------------------------------------------------------------------
 //	This silliness is required because the compiler believes that
 //	it can invert a number by subtracting it from zero and subtracting
@@ -68,6 +69,8 @@ int MemoryAllocPage(void)
 
     // The physical page is the index in the freemap * 32 + page_number - 1
     physical_page = (idx<<5) + page_number - 1;
+    pagereferencecounter[physical_page] = 1;
+    nfreepages -= 1;
 
     // Mark in freemap that page now in use
     freemap[idx] |= (uint32)(0x1 << (32-page_number));
@@ -92,6 +95,16 @@ void MemoryFreePTE (uint32 pte)
 {  MemoryFreePage(pte & MEM_PTE_TO_PAGEADDRESS_MASK);  }
     
 //---------------------------------------------------------------------
+//  MemorySharePage ~ share a page given its PTE
+//---------------------------------------------------------------------      
+void MemorySharePage (uint32 pte)
+{
+    int p = ((pte & MEM_PTE_MASK) / MEM_PAGESIZE);
+    pagereferencecounter[p] += 1;
+    return;
+}
+
+//---------------------------------------------------------------------
 //  MemoryFreePage ~ free a page given its PTE
 //---------------------------------------------------------------------      
 void MemoryFreePage(uint32 page)
@@ -100,12 +113,16 @@ void MemoryFreePage(uint32 page)
     // Use the offset to change the value of corresponding page
     // in the freemap
     uint32 offset = (uint32)(page & MEM_FREEMAP_PAGEOFFSET_MASK);
+    
+    pagereferencecounter[page] -= 1;
+    if(pagereferencecounter[page] > 0) return;
 
     // Debug print statement
     dbprintf('m', "MemoryFreePage: (PID:%d) function started\n",GetCurrentPid());
     
     // Use the page to find index in freemap of target int
     freemap[page>>5] &= invert(0x1 << (31-offset));
+    nfreepages += 1;
 }
 
 //----------------------------------------------------------------------
@@ -146,19 +163,30 @@ void MemoryModuleInit()
     uint32 lastosaddr_page = (lastosaddress>>MEM_L1FIELD_FIRST_BITNUM);
     uint32 page_freemapoffset = (lastosaddr_page & MEM_FREEMAP_PAGEOFFSET_MASK);
 
+    physicalpgmax = MemoryGetSize() / MEM_PAGESIZE;
+    pagestart = (lastosaddress + MEM_PAGESIZE - 4) / MEM_PAGESIZE;
+    freemapmax = (physicalpgmax + 31) / 32;
+
     // Debug print statement
     dbprintf('m', "MemoryModuleInit: (PID:%d) function started\n",GetCurrentPid());
 
+    // Set all pages to be in use initially
+    for(idx=0; idx<freemapmax; idx++) freemap[idx] = MEM_FREEMAP_INUSE;
+
+    // Set references to zero for all pages
+    for(idx=0; idx<physicalpgmax; idx++) pagereferencecounter[idx] = 0;
+
+    nfreepages=0;
     // Mark all OS pages as INUSE
     for(idx=0; idx<(lastosaddr_page>>5); idx++) 
-    {  freemap[idx]=MEM_FREEMAP_INUSE;  }
+    {  pagereferencecounter[idx] = 1;  }
 
     // Handle the last 32 pages used by OS (may not be using all 32)
     freemap[lastosaddr_page>>5] = (uint32)(MEM_FREEMAP_INUSE<<(31-page_freemapoffset));
     
     // Mark the rest of the pages as NOTINUSE
     for(idx=(lastosaddr_page>>5)+1; idx<MEM_MAX_PAGES>>5; idx++)
-    {  freemap[idx]=MEM_FREEMAP_NOTINUSE;  }
+    {  freemap[idx]=MEM_FREEMAP_NOTINUSE; nfreepages++;  }
 }
 
 //----------------------------------------------------------------------
@@ -300,4 +328,19 @@ int MemoryPageFaultHandler(PCB *pcb)
     }
 }
 
+void MemoryROPAccessHandler(PCB * pcb)
+{
+    uint32 faultAddress = pcb->currentSavedFrame[PROCESS_STACK_FAULT];
+    uint32 virtual_page_num = faultAddress >> MEM_L1FIELD_FIRST_BITNUM;
+    uint32 physical_page_num = ((pcb->pagetable[virtual_page_num]&MEM_PTE_MASK)>>MEM_L1FIELD_FIRST_BITNUM);
+    uint32 newPage;
 
+    if(pagereferencecounter[physical_page_num] > 1)
+    {
+        newPage = MemoryAllocPage();
+        pcb->pagetable[virtual_page_num] = MemorySetupPTE(newPage);
+        bcopy((char *)(faultAddress), (char *)(newPage * MEM_PAGESIZE), MEM_PAGESIZE);
+        pagereferencecounter[physical_page_num] -= 1;
+    }
+    else pcb->pagetable[virtual_page_num] &= invert(MEM_PTE_READONLY);
+}

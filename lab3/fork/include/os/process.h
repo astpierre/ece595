@@ -82,6 +82,9 @@ extern PCB	*currentPCB;
 #define PROCESS_NUMPAGES_SYSTEM_STACK 1
 #define PROCESS_NUMPAGES_USER_STACK 1
 #define PROCESS_PAGETABLESIZE (uint32)((MEM_MAX_VIRTUAL_ADDRESS+1)/MEM_PAGESIZE)
+#define PROCESS_FORK_SUCCESS 1
+#define PROCESS_FORK_FAILURE -1
+
 
 
 //---------------------------------------------------------
@@ -104,7 +107,7 @@ void ProcessKill();
 //-------------------------------------------------------
 // Put any functions prototypes that you define here.
 //-------------------------------------------------------
-
+int ProcessRealFork(PCB * pcb);
 
 
 #endif	/* __process_h__ */
