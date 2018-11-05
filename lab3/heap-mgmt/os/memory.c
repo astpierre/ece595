@@ -1,0 +1,571 @@
+//
+//	memory.c
+//
+//	Routines for dealing with memory management.
+
+//static char rcsid[] = "$Id: memory.c,v 1.1 2000/09/20 01:50:19 elm Exp elm $";
+#include "ostraps.h"
+#include "dlxos.h"
+#include "process.h"
+#include "memory.h"
+#include "queue.h"
+
+// Freemap is an array of 32-bit integers
+//  Each bit represents a page, so we create the free
+//  map to be composed of MEM_MAX_PAGES/32 ints.
+static uint32 freemap[MEM_MAX_PAGES >> 5];
+//static uint32 pagestart;
+//static int nfreepages;
+//static int freemapmax;
+
+//----------------------------------------------------------------------
+//	This silliness is required because the compiler believes that
+//	it can invert a number by subtracting it from zero and subtracting
+//	an additional 1.  This works unless you try to negate 0x80000000,
+//	which causes an overflow when subtracted from 0.  Simply
+//	trying to do an XOR with 0xffffffff results in the same code
+//	being emitted.
+//----------------------------------------------------------------------
+static int negativeone = 0xFFFFFFFF;
+static inline uint32 invert (uint32 n) 
+{
+  return (n ^ negativeone);
+}
+
+//----------------------------------------------------------------------
+//
+//	MemoryGetSize
+//
+//	Return the total size of memory in the simulator.  This is
+//	available by reading a special location.
+//
+//----------------------------------------------------------------------
+int MemoryGetSize() 
+{
+  return (*((int *)DLX_MEMSIZE_ADDRESS));
+}
+
+//---------------------------------------------------------------------
+//  MemoryAllocPage 
+//---------------------------------------------------------------------      
+int MemoryAllocPage(void) 
+{
+    uint32 physical_page = (lastosaddress>>MEM_L1FIELD_FIRST_BITNUM);
+    uint32 idx = physical_page >> 5;
+    uint32 page_number = 0;
+    
+    // Debug print statement
+    dbprintf('m', "MemoryAllocPage: (PID:%d) function started\n",GetCurrentPid());
+    
+    // First cycle through the integer freemap vales, break at first !inuse
+    while(idx<(MEM_MAX_PAGES>>5) && (freemap[idx] == MEM_FREEMAP_INUSE)) idx++;
+
+    // Check if we over indexed
+    if(idx == MEM_MAX_PAGES >> 5) return MEM_FAIL;
+
+    // Scroll through bits in integer to find free page
+    while(freemap[idx] << page_number++);
+
+    // The physical page is the index in the freemap * 32 + page_number - 1
+    physical_page = (idx<<5) + page_number - 1;
+
+    // Mark in freemap that page now in use
+    freemap[idx] |= (uint32)(0x1 << (32-page_number));
+
+    // Check that physical page does not exceed memory size
+    if(physical_page > ((MemoryGetSize()-1) >> MEM_L1FIELD_FIRST_BITNUM)) return MEM_FAIL;
+
+    // Else, return the physical page number
+    return physical_page;
+}
+
+//---------------------------------------------------------------------
+//  MemorySetupPTE ~ setup a page table entry given phys page number
+//---------------------------------------------------------------------      
+uint32 MemorySetupPTE (uint32 page)
+{  return ((page<<MEM_L1FIELD_FIRST_BITNUM) | MEM_PTE_VALID);  }
+
+//---------------------------------------------------------------------
+//  MemoryFreePTE ~ free a page given a PTE
+//---------------------------------------------------------------------      
+void MemoryFreePTE (uint32 pte)
+{  MemoryFreePage(pte & MEM_PTE_TO_PAGEADDRESS_MASK);  }
+    
+//---------------------------------------------------------------------
+//  MemoryFreePage ~ free a page given its PTE
+//---------------------------------------------------------------------      
+void MemoryFreePage(uint32 page)
+{
+    // Find the offset of the physical page from 32-bit intervals
+    // Use the offset to change the value of corresponding page
+    // in the freemap
+    uint32 offset = (uint32)(page & MEM_FREEMAP_PAGEOFFSET_MASK);
+
+    // Debug print statement
+    dbprintf('m', "MemoryFreePage: (PID:%d) function started\n",GetCurrentPid());
+    
+    // Use the page to find index in freemap of target int
+    freemap[page>>5] &= invert(0x1 << (31-offset));
+}
+
+//----------------------------------------------------------------------
+//
+//	MemoryModuleInit
+//
+//	Initialize the memory module of the operating system.
+//  Basically just need to setup the freemap for pages, and mark
+//  the ones in use by the operating system as "VALID", and mark
+//  all the rest as not in use.
+//
+//----------------------------------------------------------------------
+void MemoryModuleInit() 
+{
+    //-----------------------------------------------------
+    // Freemap: 
+    //          An array of bits in memory representing
+    //          which pages are in use and which are not
+    // 
+    // Implementation:  
+    //          Array of integers, each integer represents
+    //          32 pages. To find an availible physical
+    //          page, loop through the freemap ints until
+    //          you find one entry that is not zero. Then
+    //          start looking at each bit one-at-a-time
+    //          until you find a bit that is a one.
+    // Init:
+    //          Mark the pages in use by OS as "INUSE" and
+    //          the rest as "NOTINUSE"... But how can I 
+    //          know which pages those are??? Well, the OS
+    //          is loaded at the top of physical memory.
+    //          So, it must be starting at address 0x0,
+    //          what about ending? DLXOS defines a global
+    //          var in /os/osend.s at compile time called:
+    //          lastosaddress.  
+    //-----------------------------------------------------
+    int idx=0;
+    uint32 lastosaddr_page = (lastosaddress>>MEM_L1FIELD_FIRST_BITNUM);
+    uint32 page_freemapoffset = (lastosaddr_page & MEM_FREEMAP_PAGEOFFSET_MASK);
+
+    // Debug print statement
+    dbprintf('m', "MemoryModuleInit: (PID:%d) function started\n",GetCurrentPid());
+
+    // Mark all OS pages as INUSE
+    for(idx=0; idx<(lastosaddr_page>>5); idx++) 
+    {  freemap[idx]=MEM_FREEMAP_INUSE;  }
+
+    // Handle the last 32 pages used by OS (may not be using all 32)
+    freemap[lastosaddr_page>>5] = (uint32)(MEM_FREEMAP_INUSE<<(31-page_freemapoffset));
+    
+    // Mark the rest of the pages as NOTINUSE
+    for(idx=(lastosaddr_page>>5)+1; idx<MEM_MAX_PAGES>>5; idx++)
+    {  freemap[idx]=MEM_FREEMAP_NOTINUSE;  }
+}
+
+//----------------------------------------------------------------------
+//  MemoryTranslateUserToSystem
+//	  Translate a user address (in the process referenced by pcb)
+//	  into an OS (physical) address.  Return the physical address.
+//----------------------------------------------------------------------
+uint32 MemoryTranslateUserToSystem(PCB *pcb, uint32 addr)
+{
+    uint32 physical_addr=0;
+    int page_offset = addr & MEM_PAGE_OFFSET_MASK;
+    int page_virtual = addr >> MEM_L1FIELD_FIRST_BITNUM;
+    int pte = pcb->pagetable[page_virtual];
+
+    // Debug print statement
+    //dbprintf('m', "MemoryTranslateUserToSystem: (PID:%d) function started\n",GetCurrentPid());
+
+    // If PTE invalid, page fault
+    if((pte & MEM_PTE_VALID) == 0) return MemoryPageFaultHandler(pcb);
+
+    // Else calculate physical address and return it
+    physical_addr = (uint32)((pte&(~MEM_PAGE_OFFSET_MASK))+page_offset);
+    return physical_addr;
+}
+
+//----------------------------------------------------------------------
+//	MemoryMoveBetweenSpaces
+//	  Copy data between user and system spaces
+//	  This is done page by page by:
+//	    * Translating the user address into system space
+//	    * Copying all of the data in that page
+//	    * Repeating until all of the data is copied
+//	  
+//	  A positive direction means: copy system --> user
+//	  A negative direction means: copy user --> system
+//	  
+//	  This routine returns the number of bytes copied. Note that this
+//	  may be less than the number requested if there were unmapped pages
+//	  in the user range. If this happens, the copy stops at the
+//	  first unmapped address.
+//----------------------------------------------------------------------
+int MemoryMoveBetweenSpaces (PCB *pcb, unsigned char *system, unsigned char *user, int n, int dir) 
+{
+    unsigned char *curUser; // Holds current physical address representing user-space virtual address
+    int bytesCopied = 0;    // Running counter
+    int	bytesToCopy;        // Used to compute number of bytes left in page to be copied
+    
+    // Debug print statement
+    //dbprintf('m', "MemoryMoveBetweenSpaces: (PID:%d) function started\n",GetCurrentPid());
+    
+    while (n > 0)
+    {
+        // Translate current user page to system address
+        // If this fails, return the number of bytes copied so far
+        curUser = (unsigned char *)MemoryTranslateUserToSystem(pcb, (uint32)user);
+        
+        // If we could not translate address, exit now
+        if (curUser == (unsigned char *)0) break;
+
+        // Calculate the number of bytes to copy this time. If we have more bytes
+        // to copy than there are left in the current page, we'll have to just copy to the
+        // end of the page and then go through the loop again with the next page.
+        
+        // In other words, "bytesToCopy" is the minimum of the bytes left on this page 
+        // and the total number of bytes left to copy ("n")
+
+        // First, compute number of bytes left in this page. This is just
+        // the total size of a page minus the current offset part of the physical
+        // address.  MEM_PAGESIZE should be the size (in bytes) of 1 page of memory.
+        // MEM_PAGE_OFFSET_MASK should be the bit mask required to get just the
+        // "offset" portion of an address.
+        bytesToCopy = MEM_PAGESIZE - ((uint32)curUser & MEM_PAGE_OFFSET_MASK);
+    
+        // Now find minimum of bytes in this page vs. total bytes left to copy
+        if (bytesToCopy > n) 
+        {  bytesToCopy = n;  }
+
+        // Perform positive direction copy
+        if (dir >= 0) {  bcopy(system, curUser, bytesToCopy);  }
+        // Perform negative direction copy
+        else {  bcopy (curUser, system, bytesToCopy);  }
+
+        // Keep track of bytes copied and adjust addresses appropriately.
+        n -= bytesToCopy;           // Total number of bytes left to copy
+        bytesCopied += bytesToCopy; // Total number of bytes copied thus far
+        system += bytesToCopy;      // Current address in system space to copy next bytes from/into
+        user += bytesToCopy;        // Current virtual address in user space to copy next bytes from/into
+  }
+  return (bytesCopied);
+}
+
+//----------------------------------------------------------------------
+//	These two routines copy data between user and system spaces.
+//	They call a common routine to do the copying; the only difference
+//	between the calls is the actual call to do the copying.  Everything
+//	else is identical.
+//----------------------------------------------------------------------
+int MemoryCopySystemToUser (PCB *pcb, unsigned char *from,unsigned char *to, int n) 
+{  return (MemoryMoveBetweenSpaces(pcb, from, to, n, 1));  }
+int MemoryCopyUserToSystem (PCB *pcb, unsigned char *from,unsigned char *to, int n) 
+{  return (MemoryMoveBetweenSpaces(pcb, to, from, n, -1));  }
+
+//---------------------------------------------------------------------
+//  MemoryPageFaultHandler 
+//      Called in traps.c whenever a page fault, or sementation fault
+//      (better known as a "seg fault") occurs.  If the address that was
+//      being accessed is on the stack, we need to allocate a new page 
+//      for the stack.  If it is not on the stack, then this is a legitimate
+//      seg fault and we should kill the process.  Returns MEM_SUCCESS
+//      on success, and kills the current process on failure.  Note that
+//      fault_address is the beginning of the page of the virtual address that 
+//      caused the page fault, i.e. it is the vaddr with the offset zero-ed
+//      out.
+//---------------------------------------------------------------------
+int MemoryPageFaultHandler(PCB *pcb) 
+{
+    // Calculate the address and virt+stack page numbers
+    uint32 addr = pcb->currentSavedFrame[PROCESS_STACK_FAULT];
+    uint32 virtual_page_num = addr>>MEM_L1FIELD_FIRST_BITNUM;
+    uint32 physical_page_num;
+    uint32 stack_page_num = pcb->currentSavedFrame[PROCESS_STACK_USER_STACKPOINTER]>>MEM_L1FIELD_FIRST_BITNUM;
+
+    // Debug print statement
+    dbprintf('m', "MemoryPageFaultHandler: (PID:%d) function started\n",GetCurrentPid());
+
+    // If user stack triggered Page fault, allocate page
+    //  => return MEM_SUCCESS
+    if(virtual_page_num >= stack_page_num)
+    {
+        physical_page_num = MemoryAllocPage();
+        pcb->pagetable[virtual_page_num] = MemorySetupPTE(physical_page_num);
+        return MEM_SUCCESS;
+    }
+    else
+    {
+        // Else, ProcessKill => return MEM_FAIL
+        ProcessKill();
+        return MEM_FAIL;
+    }
+}
+
+
+void bookKeeper(int MODE, int order, int addr, int size, int rsize, int ksize, int porder, int paddr, int psize,int border, int baddr, int bsize)
+{
+    if(MODE == 0)
+    {
+        // FREE
+        printf(" Freed the block: ( order = (%d) | addr=(%d) | size=(%d) )\n\n",order,addr,size);
+    }
+    else if(MODE == 1)
+    {
+        // MALLOC
+        // bookKeeper(1, order, addr, 0, rsize, ksize,0,0,0,0,0,0)
+        printf(" Allocated the block: ( order = (%d) | addr=(%d) | requested-mem-size=(%d) | block-size=(%d) )\n\n",order,addr,rsize,ksize);
+    }
+    else if(MODE == 2)
+    {
+        // CREATE LEFT CHILD
+        // bookKeeper(2, order, addr, size,0,0,porder,paddr,psize,0,0,0);
+        printf(" Created a left child node: ( order = (%d) | addr=(%d) | size=(%d) )\n",order,addr,size);
+        printf("            of parent node: ( order = (%d) | addr=(%d) | size=(%d) )\n\n",porder,paddr, psize);
+    }
+    else if(MODE == 3)
+    {
+        // CREATE RIGHT CHILD
+        // bookKeeper(3, order, addr, size,0,0,porder,paddr,psize,0,0,0);
+        printf(" Created a right child node: ( order = (%d) | addr=(%d) | size=(%d) )\n",order,addr,size);
+        printf("             of parent node: ( order = (%d) | addr=(%d) | size=(%d) )\n\n",porder,paddr, psize);
+    }
+    else if(MODE == 4)
+    {
+        // COALESCED BUDDIES!
+        // bookKeeper(4, order, addr, size,0,0,porder,paddr,psize,border,baddr,bsize);
+        printf(" Coalesced buddy nodes: ( order = (%d) | addr=(%d) | size=(%d) )\n",order,addr,size);
+        printf("                        ( order = (%d) | addr=(%d) | size=(%d) )\n",border,baddr,bsize);
+        printf("  into the parent node: ( order = (%d) | addr=(%d) | size=(%d) )\n\n",porder,paddr, psize);
+    }
+}
+
+int searchForBlocks(BuddyNode * bnode, int memsize)
+{
+    int heap_address;
+
+    if(bnode == NULL) return -1;
+
+    // Recursive condition
+    if((bnode->left_child == NULL) && (bnode->used == 0))
+    {
+        if((memsize <= bnode->size) && (memsize > (bnode->size/2)))
+        {
+            bnode->used = 1;
+            bookKeeper(1,bnode->order, bnode->addr, 0, memsize, bnode->size, 0,0,0,0,0,0);
+            return bnode->addr;
+        }
+        // We will need to make a lower order node
+        else return -1;
+    }
+    // Check the left side of the tree first to see if we have something
+    heap_address = searchForBlocks(bnode->left_child, memsize);
+    if(heap_address > -1) return heap_address;
+    // Check the right side of the tree now...
+    else return searchForBlocks(bnode->right_child, memsize);
+}
+
+int makeBlocks(BuddyNode * bnode, PCB * pcb, int memsize)
+{
+    int heap_address;
+    BuddyNode * child_L;
+    BuddyNode * child_R;
+    
+    if(bnode == NULL) return -1;
+
+    // Recursive condition
+    if((bnode->left_child == NULL) && (bnode->used == 0))
+    {
+        if((memsize <= bnode->size) && (memsize > (bnode->size/2)))
+        {
+            bnode->used = 1;
+            bookKeeper(1,bnode->order, bnode->addr, 0, memsize, bnode->size, 0,0,0,0,0,0);
+            return bnode->addr;
+        }
+        // We will need to make a lower order node...
+        // First lets check if we cannot split anymore
+        if(memsize > (bnode->size/2)) return -1;
+        if(bnode->order == 0) return -1;
+        // OK, now we can divide again!
+        child_L = &pcb->heap_trees[(bnode->idx)*2];
+        child_L->parent = bnode;
+        child_L->left_child = NULL;
+        child_L->right_child = NULL;
+        child_L->size = bnode->size / 2;
+        child_L->addr = bnode->addr;
+        child_L->order = bnode->order - 1;
+        bookKeeper(2, child_L->order, child_L->addr, child_L->size,0,0,bnode->order,bnode->addr,bnode->size,0,0,0);
+        child_R = &pcb->heap_trees[(bnode->idx)*2+1];
+        child_R->parent = bnode;
+        child_R->left_child = NULL;
+        child_R->right_child = NULL;
+        child_R->size = bnode->size / 2;
+        child_R->addr = bnode->addr + child_R->size;
+        child_R->order = bnode->order - 1;
+        bookKeeper(3, child_R->order, child_R->addr, child_R->size,0,0,bnode->order,bnode->addr,bnode->size,0,0,0);
+
+        bnode->left_child = child_L;
+        bnode->right_child = child_R;
+    }
+
+    // Try recursing down the left side first...
+    heap_address = makeBlocks((bnode->left_child), pcb, memsize);
+    if(heap_address > -1) return heap_address;
+    // Check the right side now...
+    else return makeBlocks((bnode->right_child), pcb, memsize);
+}
+
+//---------------------------------------------------------------------
+//  void * malloc(int memsize)
+//      Allocate a mem block of size memsize in the heap space by 
+//      using the buddy memory allocation technique. Return a pointer
+//      to the corresponding starting virtual address of allocated blk.
+//      Blocks must be allocated in multiples of 32 bytes. Round up.
+//---------------------------------------------------------------------
+// Smallest possible block size is determined
+// 4 bytes = smallest possible block
+// size of order-0 block = 32 bytes
+    
+// Highest possible order? 
+// Since the heap is of size 1-page, the heap size is 4KB 
+// 2^0 = 32 bytes, 2^1 = 64 bytes, 2^7 = 128, 128*32 = 4KB
+// Highest posible order == 7
+    
+// Example of user program requesting memory:
+// SPECS: block size = 512 bytes, highest order = 3, heap = 4KB
+// STEP -------------------------------------------------------------
+// 1.   |  3  |  3  |  3  |  3  |  3  |  3  |  3  |  3  |
+// 2.   |  2  |  2  |  2  |  2 ||| 2  |  2  |  2  |  2  |
+// 3.   |  1  |  1 ||| 1  |  1 ||| 2  |  2  |  2  |  2  |
+// 4.   |  0 ||| 0 ||| 1  |  1 ||| 2  |  2  |  2  |  2  |
+// 5.   |  A ||| 0 ||| 1  |  1 ||| 2  |  2  |  2  |  2  |
+// 6.   |  A ||| 0 ||| B  |  B ||| 2  |  2  |  2  |  2  |
+// 7.   |  0 ||| 0 ||| B  |  B ||| 2  |  2  |  2  |  2  |
+// 8.   |  1  |  1 ||| B  |  B ||| 2  |  2  |  2  |  2  |
+// 9.   |  1  |  1 ||| 1  |  1 ||| 2  |  2  |  2  |  2  |
+// 10.  |  2  |  2  |  2  |  2 ||| 2  |  2  |  2  |  2  |
+// 11.  |  3  |  3  |  3  |  3  |  3  |  3  |  3  |  3  |
+
+// Easy to implement with a tree: 
+//                      root = MAX_ORDER = 7
+//                         /            \
+//                        6              6
+//                     /     \        /     \
+//                    5       5      5       5
+//                   / \     / \    / \     / \
+//                  4   4   4   4  4   4   4   4 etc...
+// Each node carries metadata:
+//      1. order
+//      2. size
+//      3. inuse 
+//      4. addr 
+//      5. left/right children
+//      6. index (used to aid in multiplication)
+
+void * malloc(int memsize, PCB * pcb)
+{
+    int heap_address;
+    int size;
+    int virtual_address;
+    int physical_address;
+
+    // Check input request
+    if((memsize<=0) || (memsize > MEM_PAGESIZE)) return NULL;
+    
+    // Check for bloks of appropriate memory size starting from first node
+    heap_address = searchForBlocks(&pcb->heap_trees[1], memsize);
+
+    // If we found one, then lets return it
+    if(heap_address > -1)
+    {
+        size = pcb->heap_trees[heap_address].size;
+        virtual_address = ((MEM_PAGESIZE * 4)|heap_address);
+        return (void *)virtual_address;
+    }
+    
+    // Else, let's try to make a block that will work
+    heap_address = makeBlocks(&pcb->heap_trees[1], pcb, memsize);
+    if(heap_address > -1)
+    {
+        size = pcb->heap_trees[heap_address].size;
+        virtual_address = ((MEM_PAGESIZE * 4)|heap_address);
+        return (void *)virtual_address;
+    }
+    // NOTHING FOUND
+    return NULL;
+}
+
+int freeHelper(BuddyNode * bnode)
+{
+    bnode->used = 0;
+    bnode->left_child = NULL;
+    bnode->right_child = NULL;
+
+    if(bnode->parent != NULL)
+    {
+        // Check if we are the left child
+        if(bnode == bnode->parent->left_child)
+        {
+            // Check if we can combine...
+            if(bnode->parent->right_child->used == 0) 
+            { 
+                bookKeeper(4, bnode->order, bnode->addr, bnode->size,0,0,bnode->parent->order, 
+                           bnode->parent->addr,bnode->parent->size,bnode->parent->right_child->order, 
+                           bnode->parent->right_child->addr,bnode->parent->right_child->size);
+                freeHelper(bnode->parent);
+            }   
+        }
+        // Well we must be the right child
+        if(bnode == bnode->parent->right_child)
+        {
+            // Check if we can combine...
+            if(bnode->parent->left_child->used == 0) 
+            { 
+                bookKeeper(4, bnode->order, bnode->addr, bnode->size,0,0,bnode->parent->order, 
+                           bnode->parent->addr,bnode->parent->size,bnode->parent->left_child->order, 
+                           bnode->parent->left_child->addr,bnode->parent->left_child->size);
+                freeHelper(bnode->parent);
+            }
+        }
+    }
+    return 1;
+}
+
+//---------------------------------------------------------------------
+//  int mfree(void * ptr)
+//      Free a mem block in the heap space identified by ptr. The 
+//      caller does not specify the size of the heap block to be free.
+//      malloc() must keep track of the size of each allocated heap 
+//      block. 
+//      After freeing, mfree should check the buddies of the newly 
+//      freed blocks and combine them recursively. 
+//      If success: return # of freed bytes
+//      If failure: return -1 
+//          Fail causes: ptr is NULL, ptr does not belong to heap 
+//                       space
+//---------------------------------------------------------------------
+int mfree(void * ptr, PCB * pcb)
+{
+    int size_freed;
+    int i;
+    int order;
+    int heap_address;
+    int virtual_address;
+    int physical_address;
+    BuddyNode * bnode;
+
+    heap_address = ((int)ptr & MEM_PAGE_OFFSET_MASK);
+
+    // Find the tree node with the heap_address
+    for(i=1; i<=MEM_MAX_HEAP_NODES; i++)
+    {
+        if(pcb->heap_trees[i].addr == heap_address)
+        {  bnode =  &(pcb->heap_trees[i]);  }
+    }
+
+    // Send to bookkeeper
+    bookKeeper(0,bnode->order, heap_address, bnode->size,0,0,0,0,0,0,0,0);
+    size_freed = bnode->size;
+
+    if(freeHelper(bnode) == 1) return size_freed;
+    else return -1;
+}
+
