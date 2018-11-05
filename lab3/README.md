@@ -1,4 +1,4 @@
-# [ECE595 Programming Project 3](https://engineering.purdue.edu/~ece595/lab_2018/lab3.html)
+# [ECE595 Programming Project 3](https://engineering.purdue.edu/~ece595/labs_2018/lab3.html)
 
 ### Team members: Andrew St. Pierre
 ### Due date: Sunday, November 4, 2018
