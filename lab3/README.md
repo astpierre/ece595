@@ -3,6 +3,23 @@
 ### Team members: Andrew St. Pierre
 ### Due date: Sunday, November 4, 2018
 
+## Relevent files modified for each question
+#### 1&2. Implement dynamic one-level paging in DLXOS and write test programs 
+For this question, I modified the following files:  
+* In the ```\os``` directory, ```memory.c```,```process.c```,```traps.c```  
+* In the ```\include\os``` directory, ```memory.h```, ```memory_constants.h```, ```process.h```  
+* In the ```\apps\example``` directory, the user program tests are found  
+#### 3&4. Implement ```fork()``` with one-level page tables using copy-on-write and write a test program
+For this question, I modified the following files:  
+* In the ```\os``` directory, ```memory.c```,```process.c```,```traps.c```  
+* In the ```\include\os``` directory, ```memory.h```, ```memory_constants.h```, ```process.h```  
+* In the ```\apps\example``` directory, the user program tests are found  
+#### 5. Implement ```malloc()``` and ```free()``` system calls to accomplish heap management  
+For this question, I modified the following files:  
+* In the ```\os``` directory, ```memory.c```,```process.c```,```traps.c```  
+* In the ```\include\os``` directory, ```memory.h```, ```memory_constants.h```, ```process.h```  
+* In the ```\apps\example``` directory, the user program tests are found  
+
 ## Getting started
 1. Enter the ```lab3``` directory  
 ```
