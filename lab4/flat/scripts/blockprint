@@ -1,0 +1,67 @@
+#! /usr/local/bin/bash
+
+# This program prints a hex dump of a given file in 512-byte blocks at the
+# given block number
+
+BLOCKSIZE=512  # in bytes
+
+function print_block {
+  BLOCKSIZE=$1
+  BLOCKNUM=$2
+  FILENAME=$3
+  BYTE_START=$(( BLOCKNUM * BLOCKSIZE ))
+  if [ "_$BYTE_START" == "_" ]; then
+    BYTE_START=0
+  fi
+  echo "================================================================="
+  echo "Block $BLOCKNUM of file $FILENAME:"
+  echo "-----------------------------------------------------------------"
+  echo " Byte #:  0  1  2  3    4  5  6  7    8  9 10 11   12 13 14 15" 
+  xxd -c 16 -g 1 -l $BLOCKSIZE -s $BYTE_START $FILENAME | sed 's/\([0-9a-f]\{2\} \)\{4\}/&: /g' | sed 's/\([0-9a-f] :  \).*$/\1/'
+  echo " Byte #:  0  1  2  3    4  5  6  7    8  9 10 11   12 13 14 15" 
+  echo "================================================================="
+}
+
+function check_filename {
+  FILENAME=$1
+  if [ ! -e "$FILENAME" ]; then
+    echo "ERROR: $FILENAME does not exist!"
+    exit
+  fi
+
+  if [ -d "$FILENAME" ]; then
+    echo "ERROR: $FILENAME is a directory!"
+    exit
+  fi
+}
+
+if [ "$#" == "1" ]; then
+  FILENAME=$1
+  check_filename $FILENAME
+  # Want to loop, printing all blocks
+  echo "Printing all blocks of file $FILENAME"
+  FILESIZE=`cat $FILENAME | wc -c`
+  NUM_BLOCKS=$((FILESIZE / BLOCKSIZE))
+  for (( BLOCKNUM=0; BLOCKNUM<NUM_BLOCKS; BLOCKNUM++ )); do
+    print_block $BLOCKSIZE $BLOCKNUM $FILENAME
+  done
+elif [ "$#" == "2" ]; then
+  BLOCKNUM=$1
+  FILENAME=$2
+  check_filename $FILENAME
+  # Want to only print one block
+  print_block $BLOCKSIZE $BLOCKNUM $FILENAME
+elif [ "$#" == "3" ]; then
+  START_BLOCKNUM=$1
+  END_BLOCKNUM=$2
+  FILENAME=$3
+  check_filename $FILENAME
+  for (( BLOCKNUM=START_BLOCKNUM; BLOCKNUM<=END_BLOCKNUM; BLOCKNUM++ )); do
+    print_block $BLOCKSIZE $BLOCKNUM $FILENAME
+  done
+else
+  echo "USAGE: $0 [block number [to end block number]] <filename>";
+  exit
+fi
+
+
