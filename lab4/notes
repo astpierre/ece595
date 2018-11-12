@@ -1,0 +1,11 @@
+        FILE SYSTEM TERM                PAGING EQUIVALENT
+        ================                =================
+        block                           page
+        file                            process v addr sp.
+        inode                           pg table / PCB
+        free block vector               freemap
+        block num                       pg num
+        phys block                      phys pg
+        virt block                      v page
+        file sys block                  <none>
+        
