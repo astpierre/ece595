@@ -19,24 +19,6 @@ static lock_t lock_fbv;
 static lock_t lock_inodes;
 
 //-----------------------------------------------------------------
-// DfsModuleInit is called at boot time to initialize things and
-// open the file system for use
-//-----------------------------------------------------------------
-void DfsModuleInit() 
-{
-    // Set file system as invalid
-    DfsInvalidate();
-    // Create the locks for synchronization
-    lock_fbv = LockCreate();
-    lock_inodes = LockCreate();
-    
-    // Open file system using DfsOpenFileSystem()
-    DfsOpenFileSystem();
-
-    // Later steps... initialize buffer cache-here.
-}
-
-//-----------------------------------------------------------------
 // DfsInavlidate marks the current version of the filesystem in
 // memory as invalid.  This is really only useful when formatting
 // the disk, to prevent the current memory version from overwriting
@@ -53,76 +35,6 @@ void DfsValidate()
     sb.valid = 1;
 }
 
-//-------------------------------------------------------------------
-// DfsOpenFileSystem loads the file system metadata from the disk
-// into memory.  Returns DFS_SUCCESS on success, and DFS_FAIL on 
-// failure.
-//-------------------------------------------------------------------
-int DfsOpenFileSystem() 
-{
-    // Initialize variables and parameters
-    int i;
-    dfs_block temp_dfsblock;
-    disk_block_imitation temp_diskblock;
-    char * contig_inode_bytes;
-    char * contig_fbv_bytes;
-
-    
-    // Check that filesystem is not already open
-    if(sb.valid == 1) return DFS_FAIL;
-
-    // Read superblock from disk 
-    DiskReadBlock(1, &temp_diskblock);
-
-    // Copy the data from the block we just read into the superblock in mem
-    bcopy((char*)&temp_diskblock.data, sb, sizeof(sb));
-
-    // Read the inodes
-    contig_inode_bytes = (char *) inode; // congiguous copy
-    for(i=sb.dfs_inode_startblock; i<dfs_fbv_startblock; i++)
-    {
-        DfsReadBlock(i,&temp_dfsblock);
-        bcopy(temp_dfsblock.data,
-              &(contig_inode_bytes[(i-sb.dfs_inode_startblock)*sb.dfs_blocksize]), 
-              sb.dfs_blocksize);
-    }
-
-    // Read the free block vector
-    contig_fbv_bytes = (char *) fbv; // congiguous copy
-    for(i=sb.dfs_fbv_startblock; i<dfs_data_startblock; i++)
-    {
-        DfsReadBlock(i,&temp_dfsblock);
-        bcopy(temp_dfsblock.data,
-              &(contig_fbv_bytes[(i-sb.dfs_fbv_startblock)*sb.dfs_blocksize]), 
-              sb.dfs_blocksize);
-
-    }
-
-    // Change superblock to be invalid
-    sb.valid = 0;
-
-    // Write superblock back to disk
-    bzero(temp_diskblock.data, disk_blocksize());
-    bcopy((char *)&sb, temp_diskblock.data, sizeof(sb));
-    DiskWriteBlock(1,&temp_diskblock);
-
-    // Change it back to be valid in memory 
-    sb.valid = 1;
-    Printf(" DfsOpenFileSystem(): DFS has successfully been opened\n");
-    return DFS_SUCCESS;
-}
-
-
-//-------------------------------------------------------------------
-// DfsCloseFileSystem writes the current memory version of the
-// filesystem metadata to the disk, and invalidates the memory's 
-// version.
-//-------------------------------------------------------------------
-int DfsCloseFileSystem() 
-{
-
-}
-
 
 //-----------------------------------------------------------------
 // DfsFreeblockVectorChecker returns a 1 if block is inuse, and a
@@ -130,7 +42,7 @@ int DfsCloseFileSystem()
 //-----------------------------------------------------------------
 uint32 DfsFreeblockVectorChecker(uint32 blocknum) 
 {
-    uint32 wordSize = 32;
+    uint32 wordsize = 32;
     if(fbv[blocknum/wordsize] & (1 << (blocknum % 32)))
     {
         // BLOCK NOT IN-USE
@@ -164,7 +76,7 @@ uint32 DfsAllocateBlock()
     if(sb.valid != 1) return DFS_FAIL;
 
     // Grab the lock
-    while(LockHandleAquire(lock_fbv) != SYNC_SUCCESS);
+    while(LockHandleAcquire(lock_fbv) != SYNC_SUCCESS);
     
     // Use the freeblock vector checker to determine if allocated
     for(i=0; i<sb.dfs_numblocks; i+=32)
@@ -194,10 +106,10 @@ int DfsFreeBlock(uint32 blocknum)
     if(sb.valid != 1) return DFS_FAIL;
 
     // Grab the lock
-    while(LockHandleAquire(lock_fbv) != SYNC_SUCCESS);
+    while(LockHandleAcquire(lock_fbv) != SYNC_SUCCESS);
     
     // Mark it !in-us
-    DfsFreeblockVectorSet(i,1);
+    DfsFreeblockVectorSet(blocknum,1);
     
     // Release the lock
     while(LockHandleRelease(lock_fbv) != SYNC_SUCCESS);
@@ -233,9 +145,10 @@ int DfsReadBlock(uint32 blocknum, dfs_block *b)
     for(i=0; i<times_to_read; i++)
     {
         physdisk_blocknum = i+(blocknum*times_to_read);
-        if(DiskReadBlock(physdisk_blocknum,&temp_diskblock) == DISK_FAIL)
+        bzero(temp_diskblock.data,diskblocksize);
+        if(DiskReadBlock(physdisk_blocknum,(char*)&temp_diskblock) == DISK_FAIL)
         {  return DISK_FAIL;  }
-        bcopy(temp_diskblock.data, &b->data[diskblocksize*i], diskblocksize;
+        bcopy(temp_diskblock.data, &b->data[diskblocksize*i], diskblocksize);
         bytes_read+=diskblocksize;
     }
 
@@ -270,15 +183,150 @@ int DfsWriteBlock(uint32 blocknum, dfs_block *b)
     times_to_write = sb.dfs_blocksize / diskblocksize;
     for(i=0; i<times_to_write; i++)
     {
-        bcopy(&b->data[diskblocksize*i], temp_diskblock.data, diskblocksize;
+        bcopy(&b->data[diskblocksize*i], temp_diskblock.data, diskblocksize);
         physdisk_blocknum = i+(blocknum*times_to_write);
-        if(DiskWriteBlock(physdisk_blocknum,&temp_diskblock) == DISK_FAIL)
+        if(DiskWriteBlock(physdisk_blocknum,(char*)&temp_diskblock) == DISK_FAIL)
         {  return DISK_FAIL;  }
         bytes_written+=diskblocksize;
     }
 
     // Return the number of bytes written
     return bytes_written;
+}
+
+
+//-------------------------------------------------------------------
+// DfsOpenFileSystem loads the file system metadata from the disk
+// into memory.  Returns DFS_SUCCESS on success, and DFS_FAIL on 
+// failure.
+//-------------------------------------------------------------------
+int DfsOpenFileSystem() 
+{
+    // Initialize variables and parameters
+    int i;
+    dfs_block temp_dfsblock;
+    disk_block_imitation temp_diskblock;
+    char * contig_inode_bytes;
+    char * contig_fbv_bytes;
+
+    
+    // Check that filesystem is not already open
+    if(sb.valid == 1) return DFS_FAIL;
+
+    // Read superblock from disk 
+    DiskReadBlock(1, &temp_diskblock);
+
+    // Copy the data from the block we just read into the superblock in mem
+    bcopy(temp_diskblock.data,(char*)&sb, sizeof(sb));
+
+    // Read the inodes
+    contig_inode_bytes = (char *) inodes; // congiguous copy
+    for(i=sb.dfs_inode_startblock; i<sb.dfs_freeblockvector_startblock; i++)
+    {
+        DfsReadBlock(i,&temp_dfsblock);
+        bcopy(temp_dfsblock.data,
+              &(contig_inode_bytes[(i-sb.dfs_inode_startblock)*sb.dfs_blocksize]), 
+              sb.dfs_blocksize);
+    }
+
+    // Read the free block vector
+    contig_fbv_bytes = (char *) fbv; // congiguous copy
+    for(i=sb.dfs_freeblockvector_startblock; i<sb.dfs_data_startblock; i++)
+    {
+        DfsReadBlock(i,&temp_dfsblock);
+        bcopy(temp_dfsblock.data,
+              &(contig_fbv_bytes[(i-sb.dfs_freeblockvector_startblock)*sb.dfs_blocksize]), 
+              sb.dfs_blocksize);
+
+    }
+
+    // Change superblock to be invalid
+    DfsInvalidate();
+
+    // Write superblock back to disk
+    bzero(temp_diskblock.data, DiskBytesPerBlock());
+    bcopy((char *)&sb, temp_diskblock.data, sizeof(sb));
+    DiskWriteBlock(1,&temp_diskblock);
+
+    // Change it back to be valid in memory 
+    DfsValidate();
+    printf(" DfsOpenFileSystem(): DFS has successfully been opened\n");
+    return DFS_SUCCESS;
+}
+
+
+//-----------------------------------------------------------------
+// DfsModuleInit is called at boot time to initialize things and
+// open the file system for use
+//-----------------------------------------------------------------
+void DfsModuleInit() 
+{
+    // Set file system as invalid
+    DfsInvalidate();
+    // Create the locks for synchronization
+    lock_fbv = LockCreate();
+    lock_inodes = LockCreate();
+    
+    // Open file system using DfsOpenFileSystem()
+    DfsOpenFileSystem();
+
+    // Later steps... initialize buffer cache-here.
+}
+
+
+//-------------------------------------------------------------------
+// DfsCloseFileSystem writes the current memory version of the
+// filesystem metadata to the disk, and invalidates the memory's 
+// version.
+//-------------------------------------------------------------------
+int DfsCloseFileSystem() 
+{
+    // Initialize variables and parameters
+    int i;
+    dfs_block temp_dfsblock;
+    disk_block_imitation temp_diskblock;
+    char * contig_inode_bytes;
+    char * contig_fbv_bytes;
+
+    
+    // Check that filesystem is still open
+    if(sb.valid != 1) return DFS_FAIL;
+
+    // Read superblock from disk 
+    DiskReadBlock(1, &temp_diskblock);
+
+    // Copy the data from the block we just read into the superblock in mem
+    bcopy(temp_diskblock.data,(char*)&sb, sizeof(sb));
+
+    // Write the inodes to disk
+    contig_inode_bytes = (char *) inodes; // congiguous copy
+    for(i=sb.dfs_inode_startblock; i<sb.dfs_freeblockvector_startblock; i++)
+    {
+        bcopy(&(contig_inode_bytes[(i-sb.dfs_inode_startblock)*sb.dfs_blocksize]), 
+              temp_dfsblock.data,
+              sb.dfs_blocksize);
+        DfsWriteBlock(i,&temp_dfsblock);
+    }
+
+    // Read the free block vector
+    contig_fbv_bytes = (char *) fbv; // congiguous copy
+    for(i=sb.dfs_freeblockvector_startblock; i<sb.dfs_data_startblock; i++)
+    {
+        bcopy(&(contig_fbv_bytes[(i-sb.dfs_freeblockvector_startblock)*sb.dfs_blocksize]), 
+              temp_dfsblock.data,
+              sb.dfs_blocksize);
+        DfsWriteBlock(i,&temp_dfsblock);
+    }
+
+    // Write superblock back to disk
+    bzero(temp_diskblock.data, DiskBytesPerBlock());
+    bcopy((char *)&sb, temp_diskblock.data, sizeof(sb));
+    DiskWriteBlock(1,&temp_diskblock);
+
+    // Change superblock to be invalid
+    DfsInvalidate();
+    printf(" DfsCloseFileSystem(): DFS has successfully been closed\n");
+    return DFS_SUCCESS;
 }
 
 
