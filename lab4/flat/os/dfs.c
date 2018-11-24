@@ -341,7 +341,23 @@ int DfsCloseFileSystem()
 //-----------------------------------------------------------------
 uint32 DfsInodeFilenameExists(char *filename) 
 {
+    // Initialize variables and parameters
+    int i;
 
+    // Check that filesystem is open
+    if(sb.valid != 1) return DFS_FAIL;
+
+    // Do a string compare on the in-use inodes filenames
+    for(i=0; i<DFS_INODE_MAX_NUM; i++)
+    {
+        if(inodes[i].inuse == 1)
+        {
+            // This inode is in-use, lets compare filenames
+            if(dstrncmp(filename,inodes[i].file_name, DFS_MAX_FILENAME_LENGTH) == 0)
+            {  return i;  }
+        }
+    }
+    return DFS_FAIL;
 }
 
 
@@ -354,7 +370,36 @@ uint32 DfsInodeFilenameExists(char *filename)
 //-----------------------------------------------------------------
 uint32 DfsInodeOpen(char *filename) 
 {
+    // Initialize variables and parameters
+    uint32 i;
+    uint32 inode_handle;
 
+    // Check that filesystem is open
+    if(sb.valid != 1) return DFS_FAIL;
+
+    // Check if this filename exists
+    if((inode_handle=DfsInodeFilenameExists(filename)) != DFS_FAIL) return inode_handle;
+
+    // Grab the lock
+    while(LockHandleAcquire(lock_inodes) != SYNC_SUCCESS);
+    // We need to alloc new inode for filename
+    for(i=0; i<DFS_INODE_MAX_NUM; i++)
+    {
+        if(inodes[i].inuse != 1)
+        {
+            // This inode is not in-use, lets give it to this new filename
+            inodes[i].file_size = 0;
+            inodes[i].inuse = 1;
+            dstrncpy(inodes[i].file_name, filename,DFS_MAX_FILENAME_LENGTH);
+            // Release the lock
+            while(LockHandleRelease(lock_inodes) != SYNC_SUCCESS);
+            return i;
+        }
+    }
+
+    // Release the lock
+    while(LockHandleRelease(lock_inodes) != SYNC_SUCCESS);
+    return DFS_FAIL;
 }
 
 
@@ -367,7 +412,43 @@ uint32 DfsInodeOpen(char *filename)
 //-----------------------------------------------------------------
 int DfsInodeDelete(uint32 handle) 
 {
+    // Initialize variables and parameters
+    uint32 i;
+    uint32 inode_handle;
+    dfs_block temp_dfsblock;
 
+    // Check that filesystem is open
+    if(sb.valid != 1) return DFS_FAIL;
+
+    // Check if this filename exists
+    if(inodes[handle].inuse != 1) return DFS_FAIL; 
+
+    // Grab the lock
+    while(LockHandleAcquire(lock_inodes) != SYNC_SUCCESS);
+    // We need to remove the inode data for this filename
+    inodes[inode_handle].file_size = 0;
+    inodes[inode_handle].inuse = 0;
+    bzero(inodes[handle].file_name, DFS_MAX_FILENAME_LENGTH);
+
+    // We need to free the indirect address blocks
+    for(i=0; i<DFS_INODE_NUM_INDIRECT_ADDRESSED_BLOCKS; i++)
+    {
+        if(inodes[handle].indir_addr_table[i] != 0)
+        {  DfsFreeBlock(inodes[handle].indir_addr_table[i]);  }
+        inodes[handle].indir_addr_table[i] = 0;
+    }
+
+    // We need to free the direct addressed blocks (10)
+    for(i=0; i<DFS_INODE_NUM_DIRECT_ADDRESSED_BLOCKS; i++)
+    {
+        if(inodes[handle].dir_addr_table[i] != 0)
+        {  DfsFreeBlock(inodes[handle].dir_addr_table[i]);  }
+        inodes[handle].dir_addr_table[i] = 0;
+    }
+    
+    // Release the lock and return success
+    while(LockHandleRelease(lock_inodes) != SYNC_SUCCESS);
+    return DFS_SUCCESS;
 }
 
 
@@ -379,6 +460,13 @@ int DfsInodeDelete(uint32 handle)
 //-----------------------------------------------------------------
 int DfsInodeReadBytes(uint32 handle, void *mem, int start_byte, int num_bytes) 
 {
+
+    // Check that filesystem is open
+    if(sb.valid != 1) return DFS_FAIL;
+
+    // Check if this filename exists
+    if(inodes[handle].inuse != 1) return DFS_FAIL;
+
 
 }
 
@@ -404,7 +492,13 @@ int DfsInodeWriteBytes(uint32 handle, void *mem, int start_byte, int num_bytes)
 //-----------------------------------------------------------------
 uint32 DfsInodeFilesize(uint32 handle) 
 {
+    // Check that filesystem is open
+    if(sb.valid != 1) return DFS_FAIL;
 
+    // Check if this filename exists
+    if(inodes[handle].inuse != 1) return DFS_FAIL; 
+
+    return inodes[handle].file_size;
 }
 
 
@@ -419,6 +513,32 @@ uint32 DfsInodeFilesize(uint32 handle)
 //-----------------------------------------------------------------
 uint32 DfsInodeAllocateVirtualBlock(uint32 handle, uint32 virtual_blocknum) 
 {
+    // Initialize variables
+    dfs_block temp_dfsblock;
+    uint32i * indir_table;
+
+    // Check that filesystem is open
+    if(sb.valid != 1) return DFS_FAIL;
+
+    // Check if this filename exists
+    if(inodes[handle].inuse != 1) return DFS_FAIL; 
+
+    // If the virtual_blocknum < 10, it is in direct addressed block
+    if(virtual_blocknum < 10) 
+    { 
+        if(inodes[handle].dir_addr_table[virtual_blocknum] != 0)
+        {  return inodes[handle].dir_addr_table[virtual_blocknum];  }
+        inodes[handle].dir_addr_table[virtual_blocknum] = DfsAllocateBlock();
+        return inodes[handle].dir_addr_table[virtual_blocknum];
+    }
+
+    // If not, then it must be an indirect address
+    // We will need to read the indirect block from the disk
+    bzero(temp_dfsblock.data,sb.dfs_blocksize);
+    DfsReadBlock(inodes[handle].indir_addr_table, &temp_dfsblock);
+    bcopy(temp_dfsblock.data,(char *)indir_table,sb.dfs_blocksize);
+    virtual_blocknum -= 10;
+    return indir_table[virtual_blocknum];
 
 }
 
@@ -430,5 +550,24 @@ uint32 DfsInodeAllocateVirtualBlock(uint32 handle, uint32 virtual_blocknum)
 //-----------------------------------------------------------------
 uint32 DfsInodeTranslateVirtualToFilesys(uint32 handle, uint32 virtual_blocknum) 
 {
+    // Initialize variables
+    dfs_block temp_dfsblock;
+    uint32 indir_table[sb.dfs_blocksize / 4];
 
+    // Check that filesystem is open
+    if(sb.valid != 1) return DFS_FAIL;
+
+    // Check if this filename exists
+    if(inodes[handle].inuse != 1) return DFS_FAIL; 
+
+    // If the virtual_blocknum < 10, it is in direct addressed block
+    if(virtual_blocknum < 10) return inodes[handle].dir_addr_table[virtual_blocknum];
+    
+    // If not, then it must be an indirect address
+    // We will need to read the indirect block from the disk
+    bzero(temp_dfsblock.data,sb.dfs_blocksize);
+    DfsReadBlock(inodes[handle].indir_addr_table, &temp_dfsblock);
+    bcopy(temp_dfsblock.data,(char *)indir_table,sb.dfs_blocksize);
+    virtual_blocknum -= 10;
+    return indir_table[virtual_blocknum];
 }

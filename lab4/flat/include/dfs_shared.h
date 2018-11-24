@@ -30,7 +30,7 @@ typedef struct dfs_inode {
     uint32 file_size; 
     char file_name[DFS_INODE_MAX_FILENAME_LENGTH];
     uint32 dir_addr_table[DFS_INODE_NUM_DIRECT_ADDRESSED_BLOCKS];
-    uint32 indir_addr_table[DFS_INODE_NUM_INDIRECT_ADDRESSED_BLOCKS];
+    uint32 indir_addr_block;
     // Total size: 128 bytes
 } dfs_inode;
 
