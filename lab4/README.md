@@ -37,6 +37,16 @@ $ make run
 * ```/ece595/lab4/flat/include/os/dfs.h```  
 * ```/ece595/lab4/flat/os/dfs.c```  
 
+## Q3. Implement inode-based functions in the DFS driver     
+### Relevent files modified:  
+* ```/ece595/lab4/flat/include/os/dfs.h```  
+* ```/ece595/lab4/flat/os/dfs.c```  
+
+## Q4. Write test code in ostests.c to test the full file system driver  
+## Q5. Implement a file-based API  
+## Q6. Write a user application to test your file system API    
+## Q7. Write a disk buffer cache in your DFS file system driver    
+
 
 ## References  
 1. DLX Instruction Set  
