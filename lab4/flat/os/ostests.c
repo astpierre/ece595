@@ -8,7 +8,7 @@
 void RunOSTests() 
 {
     char myname[] = "andrew";
-    char * classinfo = "ece595";
+    char classinfo[6] = "ece595";
     uint32 file_handle;
     uint32 tmp=0;
  
@@ -23,10 +23,9 @@ void RunOSTests()
     printf("============================================================\n");
     printf("   Attempting to write the course title to file 'andrew'...\n");
     printf("   DfsInodeWriteBytes(file_handle, classinfo, 0, dstrlen(classinfo)+1)\n");
-    DfsInodeWriteBytes(file_handle, classinfo, 512, 6);
+    DfsInodeWriteBytes(file_handle, (void *)classinfo, 20, 6);
     printf("   file-size    =    %d bytes\n",DfsInodeFilesize(file_handle));
     printf("============================================================\n");
     printf("============================================================\n\n");
-    return;
 }
 
