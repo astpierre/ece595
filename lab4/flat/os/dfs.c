@@ -40,12 +40,13 @@ void DfsInvalidate()
 void DfsModuleInit() 
 {
     // Set file system as invalid
-    DfsInvalidate();
+DfsInvalidate();
     // Create the locks for synchronization
     lock_fbv = LockCreate();
     lock_inodes = LockCreate();
     
     // Open file system using DfsOpenFileSystem()
+    
     DfsOpenFileSystem();
 
     // Later steps... initialize buffer cache-here.

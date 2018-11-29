@@ -4,8 +4,17 @@
 #include "dfs.h"
 #include "files_shared.h"
 
-//#define FILE_MAX_OPEN_FILES 15
+// Definitions
+#define FILE_MAX_OPEN_FILES 15
+#define FMODE_R 1
+#define FMODE_W 2
+#define FMODE_RW 3
 
-
-
+// Function prototypes
+uint32 FileOpen(char * filename, char * mode);
+int FileClose(uint32 handle);
+int FileRead(uint32 handle, void * mem, int num_bytes);
+int FileWrite(uint32 handle, void * mem, int num_bytes);
+int FileSeek(uint32 handle, int num_bytes, int from_where);
+int FileDelete(char * filename);
 #endif

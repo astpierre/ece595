@@ -7,14 +7,14 @@
 #define FILE_SEEK_CUR 3
 
 #define FILE_MAX_FILENAME_LENGTH 72
-#define FILE_MAX_READWRITE_BYTES 1024
+#define FILE_MAX_READWRITE_BYTES 4096
 typedef struct file_descriptor {
     int inuse;
     char fname[FILE_MAX_FILENAME_LENGTH];
-    int inode;
+    int inodeHandle;
     int eof;
-    int curPos;
-    int pid;
+    int cpos;
+    int mypid;
     char mode;
 } file_descriptor;
 
