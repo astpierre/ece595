@@ -9,8 +9,8 @@ typedef unsigned int uint32;
 
 // Number of file system blocks to use for inodes
 #define FDISK_NUM_INODES 128
-#define FDISK_INODE_NUM_BLOCKS FDISK_NUM_INODES*sizeof(dfs_inode)/DFS_BLOCKSIZE
-#define FDISK_FBV_BLOCK_START FDISK_INODE_NUM_BLOCKS+FDISK_INODE_BLOCK_START
+#define FDISK_INODE_NUM_BLOCKS FDISK_NUM_INODES*sizeof(dfs_inode)/DFS_BLOCKSIZE // = 16blocks
+#define FDISK_FBV_BLOCK_START FDISK_INODE_NUM_BLOCKS+FDISK_INODE_BLOCK_START // = 17
 // Where boot record and superblock reside in the filesystem
 #define FDISK_BOOT_FILESYSTEM_BLOCKNUM 0
 #ifndef NULL
@@ -18,9 +18,6 @@ typedef unsigned int uint32;
 #endif
 
 //STUDENT: define additional parameters here, if any
-// need to define here b/c cannot read from header's includes
 #define FDISK_DFS_BLOCKSIZE DFS_BLOCKSIZE
-typedef struct disk_block_imitation {
-    char data[512];
-} disk_block_imitation;
+
 #endif

@@ -47,12 +47,12 @@ void RunOSTests()
     for(i=0;i<6;i++) printf("%c",readclass[i]);
     printf("\n");
     
-    printf("  Attempting to delete the file 'andrew'... DfsInodeDelete()\n");
-    DfsInodeDelete(file_handle);
-    printf("  Now, having deleted the file 'andrew', check existence...\n");
+    //printf("  Attempting to delete the file 'andrew'... DfsInodeDelete()\n");
+    //DfsInodeDelete(file_handle);
+    printf("  Now, having read from the file 'andrew', check existence...\n");
     if(DfsInodeFilenameExists("andrew") == DFS_FAIL)
     {  printf("   filename: andrew, NOT FOUND IN FILESYSTEM!\n");  }
-    else printf("   filename: andrew, STILL EXISTS! DELETE INODE FAILED!\n");
+    else printf("   filename: andrew, STILL EXISTS!\n");
 
 
 

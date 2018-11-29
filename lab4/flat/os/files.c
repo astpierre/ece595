@@ -7,13 +7,13 @@
 
 // Global declarations
 static file_descriptor files[DFS_INODE_NMAX_NUM]; // 128 files
-//static lock_t lock;
+static lock_t lock;
 static int openFiles = 0;
 
-int getModeNum(char * mode)
+int getModeNum(char mode)
 {
-    if((mode[0] == 'r') || (mode[0] == 'R')) return FMODE_R;
-    if((mode[0] == 'w') || (mode[0] == 'W')) return FMODE_W;
+    if((mode == (char)"r") || (mode == (char)"R")) return FMODE_R;
+    if((mode == (char)"w") || (mode == (char)"W")) return FMODE_W;
     else return FILE_FAIL;
 }
 
@@ -43,7 +43,8 @@ uint32 FileOpen(char * filename, char * mode)
     int m, inodehandle, fhandle;
 
     // Check that MAX_OPEN_FILES < 15
-    if(openFiles >= FILE_MAX_OPEN_FILES) return -1;
+    if(openFiles >= FILE_MAX_OPEN_FILES) 
+    {  printf(" ERR: too many files open...\n"); return -1;  }
 
     // Check that filename is not open in another file_descriptor
     inodehandle = DfsInodeFilenameExists(filename);
@@ -53,9 +54,11 @@ uint32 FileOpen(char * filename, char * mode)
         // File is being used by another process! Don't open this file!
         if((fhandle != FILE_FAIL) && (GetCurrentPid() != files[fhandle].mypid)) return FILE_FAIL;
     }
+    else printf(" User provided a non-preexisting filename... Creating new file if not in \"r\"...\n"); 
 
     // Use helper function to convert mode to number
-    if((m = getModeNum(mode)) == FILE_FAIL) return FILE_FAIL;
+    if((m = getModeNum(mode[0])) == FILE_FAIL)
+    {  printf(" ERR: unrecognized mode... usage: \"r\"= read, \"w\"=write\n"); return FILE_FAIL;  }
     
     // If we are in W mode, we want to do the following...
     if(m == FMODE_W)
@@ -64,17 +67,19 @@ uint32 FileOpen(char * filename, char * mode)
         if(inodehandle != DFS_FAIL)
         {
             // 2. Delete the current inode
-            if(DfsInodeDelete(inodehandle) != DFS_SUCCESS) return FILE_FAIL;
+            if(DfsInodeDelete(inodehandle) != DFS_SUCCESS)
+            {  printf(" ERR: issue deleting inode before opening for write mode\n"); return FILE_FAIL;  }
         }
         // 3. Reopen inode
         inodehandle = DfsInodeOpen(filename);
     }
 
-    // If file is nonexistent, handle this
+    // If file is nonexistent, handle this, because
+    // you cannot read from an empty file...
     if(inodehandle == DFS_FAIL) return FILE_FAIL;
 
     // Grab the lock, we are going to alter files structure
-    //while(LockHandleAcquire(lock) != SYNC_SUCCESS);
+    while(LockHandleAcquire(lock) != SYNC_SUCCESS);
 
     // Our fhandle was taken while waiting for lock or something, grab another
     if(fhandle == FILE_FAIL) fhandle = getAnotherFileDescriptor();
@@ -86,7 +91,7 @@ uint32 FileOpen(char * filename, char * mode)
     openFiles += 1;
 
     // Release the lock, we return the new file handle
-    //while(LockHandleRelease(lock) != SYNC_SUCCESS);
+    while(LockHandleRelease(lock) != SYNC_SUCCESS);
     return fhandle;
 }
 
@@ -106,12 +111,12 @@ int FileClose(uint32 handle)
     // Check that calling process was the process who opened file
     if(files[handle].mypid != GetCurrentPid()) return FILE_FAIL;
     // Grab the lock, we are going to alter files structure
-    //while(LockHandleAcquire(lock) != SYNC_SUCCESS);
+    while(LockHandleAcquire(lock) != SYNC_SUCCESS);
     // Delete the file descriptor
     CleanFileDescriptor(handle);
     openFiles -= 1;
     // Release the lock, we return FILE_SUCCESS if nothing fails
-    //while(LockHandleRelease(lock) != SYNC_SUCCESS);
+    while(LockHandleRelease(lock) != SYNC_SUCCESS);
     return FILE_SUCCESS;
 }
 
@@ -159,9 +164,7 @@ int FileSeek(uint32 handle, int num_bytes, int from_where)
     else return FILE_FAIL;
 
     // Check that current position is valid
-    if(files[handle].cpos < 0 || files[handle].cpos > DfsInodeFilesize(files[handle].inodeHandle))
-        return FILE_FAIL;
-
+    if(files[handle].cpos < 0 || files[handle].cpos > DfsInodeFilesize(files[handle].inodeHandle)) return FILE_FAIL;
     files[handle].eof = 0;
     return FILE_SUCCESS;
 }
@@ -176,17 +179,19 @@ int FileDelete(char *filename)
     if(inodeh != DFS_FAIL) 
     {
         fhndl = getFileHandle(inodeh);
-        if((fhndl != FILE_FAIL) & (GetCurrentPid() != files[fhndl].mypid)) return FILE_FAIL;
+        if((fhndl != FILE_FAIL) && (GetCurrentPid() != files[fhndl].mypid)) return FILE_FAIL;
     }
+    else return FILE_FAIL; // does not exist!
+
     if(DfsInodeDelete(inodeh) != DFS_SUCCESS) return FILE_FAIL;
     if(fhndl != -1) 
     {
         // Grab the lock, we are going to alter files structure
-        //while(LockHandleAcquire(lock) != SYNC_SUCCESS);
+        while(LockHandleAcquire(lock) != SYNC_SUCCESS);
         // Delete the file descriptor
         CleanFileDescriptor(fhndl);
         // Release the lock, we return 0 if nothing fails
-        //while(LockHandleRelease(lock) != SYNC_SUCCESS);
+        while(LockHandleRelease(lock) != SYNC_SUCCESS);
     }
     return 0;
 }

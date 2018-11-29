@@ -7,11 +7,11 @@ dfs_superblock sb;
 dfs_inode inodes[DFS_INODE_NMAX_NUM];
 uint32 fbv[DFS_FBV_MAX_NUM_WORDS];
 
-uint32 disk_bsize = 0; // These are global in order to speed things up
-uint32 disksize = 0;       // (i.e. fewer traps to OS to get the same number)
+uint32 disk_bsize = 0;      // These are global in order to speed things up
+uint32 disksize = 0;        // (i.e. fewer traps to OS to get the same number)
 
 // Function to write a dfsblock to the disk
-int FdiskWriteBlock(uint32 blocknum, char * addrStart); 
+int FdiskWriteBlock(uint32 blocknum, char ** addr); 
 
 void main (int argc, char *argv[])
 {
@@ -76,28 +76,15 @@ void main (int argc, char *argv[])
         inodes[i].iibtable = -1;
     }
     ptr = (char *)inodes;
-    for(i=sb.inodeBstart; i<sb.fbvBstart; i++)
-    {
-        // Write the inodes disk using pointer
-        FdiskWriteBlock(i,ptr);
-        ptr+=sb.bsize;
-    }
+    for(i=sb.inodeBstart; i<sb.fbvBstart; i++) FdiskWriteBlock(i,&ptr);
 
     // 6. Next, setup free block vector (fbv) and write fbv to the disk
     Printf("  Clearing the free block vector...\n"); 
-    fbv[0] = 0xFFFF9000;//using 24 blocks for dfs
-    for(i=1; i<DFS_FBV_MAX_NUM_WORDS; i++)
-    {
-        fbv[i] = 0;  // Initialize by clearing all
-    }
+    fbv[0] = 0xFFFFFF00; //using 24 blocks for dfs
+    for(i=1; i<DFS_FBV_MAX_NUM_WORDS; i++) fbv[i] = 0;  // Initialize by clearing all
     Printf("  Writing free block vector to disk...\n"); 
     ptr = (char *)fbv;
-    for(i=sb.fbvBstart; i<sb.dataBstart; i++)
-    {
-        // Write the fbv to disk using pointer
-        FdiskWriteBlock(i,ptr);
-        ptr+=sb.bsize;
-    }
+    for(i=sb.fbvBstart; i<sb.dataBstart; i++) FdiskWriteBlock(i,&ptr);
 
 
     // 7. Finally, setup superblock as valid filesystem & write to disk
@@ -112,24 +99,23 @@ void main (int argc, char *argv[])
     Printf("============================================================\n\n\n"); 
 }
 
-int FdiskWriteBlock(uint32 dfsblocknum, char * addrStart)
+int FdiskWriteBlock(uint32 dfsblocknum, char ** addr)
 {
     // Remember: dfsblocknum = DFS block num
     // # times to write to phys disk = sb.bsize / disk_bsize
     uint32 times_to_write = sb.bsize / disk_bsize;
     uint32 i, phydisk_blocknum;
-    char * addr = addrStart;
     for(i=0; i<times_to_write; i++)
     {
         // Calculate the physical block number from dfsblocknum, i, times_to_write
         phydisk_blocknum = i+(dfsblocknum*times_to_write);
         // Write that tempblock to the disk block
-        if(disk_write_block(phydisk_blocknum,addr) == DISK_FAIL)
+        if(disk_write_block(phydisk_blocknum,*addr) == DISK_FAIL)
         {  
             Printf("Error writing physdisk blocknum %d!\n");
             return DISK_FAIL;
         }
-        addr+=disk_bsize;
+        *addr = *addr + disk_bsize;
     }
     return DISK_SUCCESS;
 }

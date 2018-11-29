@@ -8,7 +8,6 @@
 #define FILE_MAX_OPEN_FILES 15
 #define FMODE_R 1
 #define FMODE_W 2
-#define FMODE_RW 3
 
 // Function prototypes
 uint32 FileOpen(char * filename, char * mode);

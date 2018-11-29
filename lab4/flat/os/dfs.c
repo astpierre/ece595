@@ -40,7 +40,7 @@ void DfsInvalidate()
 void DfsModuleInit() 
 {
     // Set file system as invalid
-DfsInvalidate();
+    DfsInvalidate();
     // Create the locks for synchronization
     lock_fbv = LockCreate();
     lock_inodes = LockCreate();
@@ -48,14 +48,13 @@ DfsInvalidate();
     // Open file system using DfsOpenFileSystem()
     
     DfsOpenFileSystem();
-
     // Later steps... initialize buffer cache-here.
 }
 
 // DfsFBVChecker ==========================================
 // Looks in the free block vector and returns the status
 // of the dfs block corresponding to block number. Returns 
-// 1 if inuse, 0 if free.
+// 0 if inuse, 1 if free.
 // ========================================================
 uint32 DfsFBVChecker(uint32 blocknum) 
 {
@@ -76,9 +75,9 @@ void DfsFBVSet(uint32 blocknum, uint32 val)
     int fbvPosition = blocknum & 0x1F;  // blocknum bitwise AND
 
     // Set the value of blocknum in the FBV
-    if(val == 0) // CLEAR (FREEING)
+    if(val == 0) // CLEAR (FREEING) (mark free)
     fbv[fbvPacket] &= invert(1<<(31 - fbvPosition));
-    else if(val == 1) // SET (ALLOCATING)
+    else if(val == 1) // SET (ALLOCATING) (mark inuse)
     fbv[fbvPacket] |= (1<<(31 - fbvPosition));
 }
 
@@ -98,7 +97,7 @@ uint32 DfsAllocateBlock()
     while(LockHandleAcquire(lock_fbv) != SYNC_SUCCESS);
     
     // First let's find a packet with at least one zero
-    while(fbv[i] == 0xFFFFFFFF) 
+    while(fbv[i] == 0xFFFFFFFF)
     {  i++; if(i >= DFS_FBV_MAX_NUM_WORDS) return DFS_FAIL; pack=i;  }
     // Now, let's find that zero bit (first apperance)
     for(j=0; j<32; j++)
@@ -107,19 +106,7 @@ uint32 DfsAllocateBlock()
     }
     fbv[pack] = fbv[pack] | (1 << (31-pos));
     while(LockHandleRelease(lock_fbv) != SYNC_SUCCESS);
-    return 32*+pack+pos;
-        /*if(DfsFBVChecker(32*i+j) == 0) 
-        {
-            // This block is free! lets allocate it!
-            DfsFBVSet(32*i+j,1); // mark it inuse
-            // Release the lock
-            while(LockHandleRelease(lock_fbv) != SYNC_SUCCESS);
-            return 32*i+j;
-        }
-    } 
-    // Release the lock and exit fail
-    while(LockHandleRelease(lock_fbv) != SYNC_SUCCESS);
-    return DFS_FAIL;*/
+    return 32*pack+pos;
 }
 
 // DfsFreeBlock ===========================================
