@@ -6,16 +6,15 @@
 #define FILE_SEEK_END 2
 #define FILE_SEEK_CUR 3
 
-#define FILE_MAX_FILENAME_LENGTH 72 
-#define FILE_MAX_READWRITE_BYTES 1024 
-
+#define FILE_MAX_FILENAME_LENGTH 72
+#define FILE_MAX_READWRITE_BYTES 1024
 typedef struct file_descriptor {
-    uint32 inuse;
-    char file_name[FILE_MAX_FILENAME_LENGTH];
-    uint32 inode;
-    uint32 eof;
-    uint32 current_position;
-    uint32 pid;
+    int inuse;
+    char fname[FILE_MAX_FILENAME_LENGTH];
+    int inode;
+    int eof;
+    int curPos;
+    int pid;
     char mode;
 } file_descriptor;
 
