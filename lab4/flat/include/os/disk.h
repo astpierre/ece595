@@ -2,7 +2,6 @@
 #define __DISK_H__
 
 // Name of file which represents the "hard disk".
-// Chose 77 because not sure what my group num is
 #define DISK_FILENAME "/tmp/ee469g77.img"
 
 // Number of bytes in one physical disk block

@@ -582,8 +582,7 @@ dointerrupt (unsigned int cause, unsigned int iar, unsigned int isr,
   uint32 handle;
   int ihandle;
 
-  dbprintf ('t',"Interrupt cause=0x%x iar=0x%x isr=0x%x args=0x%08x.\n",
-	    cause, iar, isr, (int)trapArgs);
+  dbprintf ('t',"Interrupt cause=0x%x iar=0x%x isr=0x%x args=0x%08x.\n",cause, iar, isr, (int)trapArgs);
   // If the TRAP_INSTR bit is set, this was from a trap instruction.
   // If the bit isn't set, this was a system interrupt.
   if (cause & TRAP_TRAP_INSTR) {
@@ -638,7 +637,7 @@ dointerrupt (unsigned int cause, unsigned int iar, unsigned int isr,
       // Allow Open() calls to be interruptible!
       intrs = EnableIntrs ();
       ProcessSetResult (currentPCB, args[1] + 0x10000);
-      printf ("Got an open with parameters ('%s',0x%x)\n", (char *)(args[0]), args[1]);
+      dbprintf ('t',"Got an open with parameters ('%s',0x%x)\n", (char *)(args[0]), args[1]);
       RestoreIntrs (intrs);
       break;
     case TRAP_CLOSE:
@@ -771,7 +770,7 @@ dointerrupt (unsigned int cause, unsigned int iar, unsigned int isr,
       break;
 
     default:
-      printf ("Got an unrecognized trap (0x%x) - exiting!\n",
+      dbprintf ('t', "Got an unrecognized trap (0x%x) - exiting!\n",
 	      cause);
       GracefulExit ();
       break;

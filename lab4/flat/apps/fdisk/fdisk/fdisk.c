@@ -45,19 +45,19 @@ void main (int argc, char *argv[])
     sb.valid = 0;
     Printf("  Initializing superblock...\n");
     sb.bsize = DFS_BLOCKSIZE;
-    Printf("   sb.bsize                  = %d bytes\n",sb.bsize);
+    Printf("   sb.bsize                     = %d bytes\n",sb.bsize);
     sb.nblocks = disksize / sb.bsize;
-    Printf("   sb.nblocks                = %d blocks\n",sb.nblocks);
+    Printf("   sb.nblocks                   = %d blocks\n",sb.nblocks);
     sb.ninodes = FDISK_NUM_INODES;
-    Printf("   sb.ninodes                = %d inodes\n",sb.ninodes);
+    Printf("   sb.ninodes                   = %d inodes\n",sb.ninodes);
     sb.inodeBstart = FDISK_INODE_BLOCK_START;
     sb.fbvBstart = FDISK_FBV_BLOCK_START;
     sb.dataBstart = FDISK_FBV_BLOCK_START + (((sb.nblocks+31)/32*4) + (sb.bsize-1))/sb.bsize;
     Printf("  DLXOS File System (DFS) structure...\n");
-    Printf("   Block 0                    = master boot record + sb\n");
-    Printf("   Blocks %d --> %d            = arr inode structures\n",sb.inodeBstart,(sb.fbvBstart-1));
-    Printf("   Blocks %d --> %d           = free block vector\n",sb.fbvBstart,(sb.dataBstart-1));
-    Printf("   Blocks %d --> %d        = data blocks\n",sb.dataBstart,(sb.nblocks));
+    Printf("   Block 0                      = master boot record + sb\n");
+    Printf("   Blocks %d --> %d              = arr inode structures\n",sb.inodeBstart,(sb.fbvBstart-1));
+    Printf("   Blocks %d --> %d             = free block vector\n",sb.fbvBstart,(sb.dataBstart-1));
+    Printf("   Blocks %d --> %d          = data blocks\n",sb.dataBstart,(sb.nblocks));
     
     // 4. Make sure the disk exists before doing anything else
     //    This creates a Linux file holding the DFS

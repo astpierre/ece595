@@ -8,12 +8,13 @@
 // Global declarations
 static file_descriptor files[DFS_INODE_NMAX_NUM]; // 128 files
 static lock_t lock;
-static int openFiles = 0;
+
+static int openFiles = -1;
 
 int getModeNum(char mode)
 {
-    if((mode == (char)"r") || (mode == (char)"R")) return FMODE_R;
-    if((mode == (char)"w") || (mode == (char)"W")) return FMODE_W;
+    if((mode == 'r') || (mode == 'R')) return FMODE_R;
+    if((mode == 'w') || (mode == 'W')) return FMODE_W;
     else return FILE_FAIL;
 }
 
@@ -37,6 +38,19 @@ int getAnotherFileDescriptor()
     return FILE_FAIL;
 }
 
+void CleanFileDescriptor(uint32 handle)
+{
+    bzero(files[handle].fname, FILE_MAX_FILENAME_LENGTH);
+    files[handle].inodeHandle = -1;
+    files[handle].mypid = -1;
+    files[handle].cpos = -1;
+    files[handle].eof = -1;
+    files[handle].mode = '\0';
+}
+
+void InitFileAPI()
+{  int i; for(i=0; i<DFS_INODE_NMAX_NUM; i++) CleanFileDescriptor(i);  }
+
 uint32 FileOpen(char * filename, char * mode) 
 {
     // Variable declarations
@@ -45,6 +59,7 @@ uint32 FileOpen(char * filename, char * mode)
     // Check that MAX_OPEN_FILES < 15
     if(openFiles >= FILE_MAX_OPEN_FILES) 
     {  printf(" ERR: too many files open...\n"); return -1;  }
+    else if(openFiles == -1) { openFiles = 0; InitFileAPI(); }
 
     // Check that filename is not open in another file_descriptor
     inodehandle = DfsInodeFilenameExists(filename);
@@ -95,15 +110,6 @@ uint32 FileOpen(char * filename, char * mode)
     return fhandle;
 }
 
-void CleanFileDescriptor(uint32 handle)
-{
-    bzero(files[handle].fname, FILE_MAX_FILENAME_LENGTH);
-    files[handle].inodeHandle = -1;
-    files[handle].mypid = -1;
-    files[handle].cpos = -1;
-    files[handle].eof = -1;
-    files[handle].mode = '\0';
-}
 
 int FileClose(uint32 handle) 
 {

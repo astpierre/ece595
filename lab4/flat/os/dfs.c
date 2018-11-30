@@ -17,8 +17,8 @@ inline uint32 DFS_PHY_RATIO(){ return sb.bsize / DiskBytesPerBlock(); }
 inline uint32 DFS_TO_PHY_BNUM(uint32 n){ return (n*DFS_PHY_RATIO()); }
 
 // Using locks for the free block vector and the inodes
-static lock_t lock_fbv;
-static lock_t lock_inodes;
+lock_t lock_fbv;
+lock_t lock_inodes;
 
 
 // DfsInvalidate ==========================================
@@ -148,14 +148,13 @@ int DfsReadBlock(uint32 blocknum, dfs_block *b)
     {  printf("ERR: sb.valid != 1\n"); return DFS_FAIL;  }
 
     // Use the freeblock vector checker to determine if allocated
-    //if(DfsFBVChecker(blocknum) == 0)
-    //{  printf("ERR: fbv said block isn't allocated\n"); return DFS_FAIL;  }
+    if(DfsFBVChecker(blocknum) == 0)
+    {  printf("ERR: fbv said block isn't allocated\n"); return DFS_FAIL;  }
 
     // Read from disk in intervals of physical disk's blocksize
     for(i=phydisk_blocknum; i<(phydisk_blocknum + DFS_PHY_RATIO()); i++)
     {
-        if(DiskReadBlock(i, &diskblock_buffer) != DISK_BLOCKSIZE)
-        {  printf("ERR: DiskReadBlock didnt read number of disk block bytes\n"); return DFS_FAIL;  }
+        DiskReadBlock(i, &diskblock_buffer);
         bcopy(diskblock_buffer.data, ptr, DISK_BLOCKSIZE);
         bytes_read+=DISK_BLOCKSIZE;
         ptr+=DISK_BLOCKSIZE;   
@@ -182,18 +181,16 @@ int DfsWriteBlock(uint32 blocknum, dfs_block *b)
     {  printf("ERR: sb.valid != 1\n"); return DFS_FAIL;  }
 
     // Use the freeblock vector checker to determine if allocated
-    //printf("DFS_PHY_RATIO: %d\n",DFS_PHY_RATIO());
-    //if(DfsFBVChecker(blocknum) != 0)
-    //{  printf("ERR: fbv said block isn't allocated\n"); return DFS_FAIL;  }
+    if(DfsFBVChecker(blocknum) == 0)
+    {  printf("ERR: fbv said block isn't allocated\n"); return DFS_FAIL;  }
 
     // Read from disk in intervals of physical disk's blocksize
     for(i=phydisk_blocknum; i<(phydisk_blocknum + DFS_PHY_RATIO()); i++)
     {
         bcopy(ptr, diskblock_buffer.data, DISK_BLOCKSIZE);
-        if(DiskWriteBlock(i, &diskblock_buffer) != DISK_BLOCKSIZE)
-        {  printf("ERR: DiskWriteBlock didnt write number of disk block bytes\n"); return DFS_FAIL;  }
+        DiskWriteBlock(i, &diskblock_buffer);
         bytes_written+=DISK_BLOCKSIZE;
-        ptr+=DISK_BLOCKSIZE;   
+        ptr+=DISK_BLOCKSIZE;
     }
     return bytes_written;
 }
@@ -465,6 +462,7 @@ int DfsInodeWriteBytes(uint32 handle, void *mem, int start_byte, int num_bytes)
     // Initialize variables and parameters
     int dfsblocknum=0, written_bytes=0;
     int cpos = start_byte % sb.bsize;
+    
     int wblocknum = start_byte / sb.bsize;
     dfs_block btable_buffer;
     char * ptr = mem;
