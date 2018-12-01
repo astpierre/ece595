@@ -21,7 +21,7 @@ $ cd ~/ece595/lab4
 ```  
 2.  Run the test script
 ```
-$ ./testLab4 Q1
+$ ./testLab4.sh Q1
 ```  
 
 ## Q2. Implement a DFS file system driver in DLXOS     
@@ -44,7 +44,7 @@ $ cd ~/ece595/lab4
 ```  
 2.  Run the test script
 ```
-$ ./testLab4 Q234
+$ ./testLab4.sh Q234
 ```  
 
 ## Q5. Implement a file-based API  
