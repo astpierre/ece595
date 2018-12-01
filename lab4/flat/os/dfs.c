@@ -615,5 +615,5 @@ uint32 DfsInodeTranslateVirtualToFilesys(uint32 handle, uint32 virtual_blocknum)
         ibt = (int *)dfsblock_buffer.data;
         dfsblocknum = ibt[virtual_blocknum-10];
     }
-    return dfsblocknum; 
+    return dfsblocknum;
 }
