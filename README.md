@@ -29,5 +29,6 @@
 1. DLX Instruction Set
 2. The DLX Architecture
 3. The DLX Operating System (DLXOS) Design
+4. MIT Open Courseware and OS Course
 
 ## END README.md
