@@ -1,0 +1,15 @@
+Final Exam Questions
+What fundamentally causes external fragmentation?
+  > segments of many different sizes having to be allocated contiguously
+
+3 advantages of multi-level page tables over 1-level page tables?
+  i.    swap pages
+  ii.   can delay allocating memory until needed
+  iii.  the page table no longer needs to be contiguous
+
+(T/F) Cache and TLB both cache a part of the physical memory. [True]
+
+Instances of using an extra level of indirection?
+  i.    multi-level page tables
+  ii.   dynamic memory relocation... base/bound, segmentation, etc
+  iii.

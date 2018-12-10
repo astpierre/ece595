@@ -1,0 +1,109 @@
+===============================================================================
+===============================================================================
+Sharing main memory: segmentation and paging
+  1. What is paging?
+    > an effort to make allocation and swapping easier and reduce memory
+      fragmentation
+    > make all chunks of memory the same size (pages)
+
+  2. Paging vs segmentation
+   |==========================================================================|
+   |---------------|PAGING --------------------|SEGMENTATION -----------------|
+   |===============|===========================|==============================|
+   |Basic ---------|page is fixed size         |seg is of variable size       |
+   |===============|===========================|==============================|
+   |Fragmentation -|may lead to internal frag  |may lead to external frag     |
+   |===============|===========================|==============================|
+   |Address -------|user spec addr is divided  |user spec addr w/ segnum and  |
+   |---------------|by CPU to pagenum + offset |offset                        |
+   |===============|===========================|==============================|
+   |Size ----------|hardware decides pagesize  |segsize decided by user       |
+   |===============|===========================|==============================|
+   |Table ---------|page tbl w/ base addrs's   |segment tbl w/ segnum + offset|
+   |==========================================================================|
+
+  3. Pros/Cons of Paging vs Segmentation
+    Segmentation
+      - external fragmentation
+      - complicated allocation / swapping
+      + small segmentation Table
+    Paging
+      - internal segmentation
+      + easy allocation / swapping
+      - large page table
+
+  4. Inverted page table
+    > If only 100 processes, each using 4kB, most will be NULL
+    > Saves page table space using one PTE for each physical page frame
+    > Hash (virtualPage, PID) --> physicalPage#
+
+  5. How many physical pages are allocaed when malloc() returns?
+    > 0 pages because malloc does not allocate physical pages
+    > Allocate page on 1st write
+===============================================================================
+===============================================================================
+Translation Look-aside Buffer (TLB)
+  1. Why TLB?
+    > a part of the chip's MMU, and is simply a hardware cache of popular
+      virtual->physical address translations
+    > solve a performance problem with paging with locality
+
+  2. Software-controlled TLB vs hardware-controlled TLB
+    Software-controlled
+      > less efficient -- TLB misses are handled by SW
+      > MMU HW very simple, permitting larger/faster TLB
+      > OS designer has flexibility in choice of MM data structure
+    Hardware-controlled
+      > efficient -- TLB misses are handled by HW
+      > OS intervvention is required only in case of page fault
+      > page structure prescribed by MMU HW -- rigid
+
+  3. What happens in context switch?
+    > cached translations can not be used by the next process
+      - flush TLB upon  --> lots of misses...
+      - OR, tag TLB entries with Address Space ID (ASID) --> less overhead!
+        -> note: ASID ~= PID, but usually has fewer bits
+
+  4. TLB as a cache -- what does it cache?
+    > Both cache a part of physical memory
+    > Differ in associativity and consistency
+
+  5. Does HW provide consistency between TLB and DRAM?
+    > NO, OS needs to flush related TLBs whenever changing a page table
+      entry in memory
+===============================================================================
+===============================================================================
+Virtual memory
+  1. What is virtual memory?
+    > Virtual memory permits a process to run with only some of its virtual
+      address space loaded into physical memory
+
+  2. What is the difference between virtual address and virtual memory?
+    > virtual memory is a memory management technique developed for
+      multitasking kernels
+    > virtual address is a memory mapping mechanism
+
+  3. How is virtual memory implemented?
+    > demand paging: paging with swapping i.e. physical pages are swapped in
+                     and out of memory
+
+  4. Page fault handling process?
+  5. How to find the virtual page for a victim physical page being swapped out?
+===============================================================================
+===============================================================================
+Page replacement algorithms
+===============================================================================
+===============================================================================
+File abstraction
+===============================================================================
+===============================================================================
+File system components
+  Components
+    File descriptor: an integer used to represent file
+    Metadata: bookkeeping info about file (length, owner, permissions, etc)
+    Open file table: OS-wide table of descriptors currently in-use
+    inode: index inodes stored in an array holding file permission, ownership,
+           size, location of disk block's last modified time
+  Disk layout of file system
+    BOOTBLOCK | SUPERBLOCK | INODEBLOCKS ||| DATABLOCKS |||
+    
