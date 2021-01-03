@@ -1,0 +1,43 @@
+class Solution {
+public:
+    vector<int> searchRange(vector<int>& nums, int target) {
+        int n = nums.size();
+        int l = 0, r = n-1;
+        vector<int> res (2, -1);
+        
+        if (n == 0) return res;
+        
+        // find the start of the range
+        while (l < r) {
+            int m = (l + r) / 2;
+            if (nums[m] == target) {  // start <= m
+                r = m;
+            } else if (nums[m] > target) {  // start < m
+                r = m-1;
+            } else {  // start > m
+                l = m+1;
+            }
+        }
+        
+        // target is not in the array
+        if (target != nums[l]) return res;
+        res[0] = l;
+        
+        // find the end of the range
+        r = n-1;
+        while (l < r) {
+            int m = (l + r + 1) / 2;
+            if (nums[m] == target) {  // end >= m
+                l = m;
+            } else if (nums[m] > target) {  // end < m
+                r = m-1;
+            } else {  // end > m
+                l = m+1;
+            }
+        }
+        
+        res[1] = r;
+        
+        return res;
+    }
+};
